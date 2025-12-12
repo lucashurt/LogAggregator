@@ -1,4 +1,4 @@
-package com.example.logaggregator.logs;
+package com.example.logaggregator.logs.models;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -12,7 +12,7 @@ import java.util.Map;
 @Table(name = "log_entries", indexes = {
         @Index(name = "idx_timestamp", columnList = "timestamp"),
         @Index(name = "idx_serviceId", columnList = "serviceId"),
-        @Index(name = "idx_status", columnList = "status")
+        @Index(name = "idx_level", columnList = "level")
 })
 @Data
 public class LogEntry {
@@ -24,11 +24,11 @@ public class LogEntry {
     private Instant timestamp;
 
     @Column(nullable = false)
-    private int serviceId;
+    private String serviceId;
 
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
-    private LogStatus status;
+    private LogStatus level;
 
     @Column(nullable = false)
     private String message;
@@ -41,5 +41,5 @@ public class LogEntry {
     private String traceId;
 
     @Column(nullable = false)
-    private Instant Created;
+    private Instant createdAt;
 }
