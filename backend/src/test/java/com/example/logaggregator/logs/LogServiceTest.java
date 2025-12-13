@@ -55,6 +55,7 @@ public class LogServiceTest {
         verify(logRepository,times(1)).save(any(LogEntry.class));
     }
 
+    @Test
     void shouldSaveLogBatchIngestion(){
         LogEntryRequest request1 =  mock(LogEntryRequest.class);
         LogEntryRequest request2 =  mock(LogEntryRequest.class);
