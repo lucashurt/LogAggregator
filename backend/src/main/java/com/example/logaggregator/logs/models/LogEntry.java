@@ -37,7 +37,7 @@ public class LogEntry {
     @JdbcTypeCode(SqlTypes.JSON)  // Use this instead of @Type
     private Map<String,Object> metadata;
 
-    @Column(unique = true)
+    @Column
     private String traceId;
 
     @Column(nullable = false)

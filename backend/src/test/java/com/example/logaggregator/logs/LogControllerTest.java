@@ -43,7 +43,6 @@ public class LogControllerTest {
         logEntry.setCreatedAt(Instant.now());
 
         when(logService.ingest(any())).thenReturn(logEntry);
-
         mockMvc.perform(post("/api/v1/logs")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -62,6 +61,57 @@ public class LogControllerTest {
                 .andExpect(jsonPath("$.level").value("INFO"))
                 .andExpect(jsonPath("$.message").value("User logged in"))
                 .andExpect(jsonPath("$.traceId").value("trace-123"));
+    }
+
+    @Test
+    void shouldRejectLogWithNoTimestamp() throws Exception {
+        mockMvc.perform(post("/api/v1/logs")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                            {
+                                "serviceId" : "auth-service",
+                                "level" : "INFO",
+                                "message" : "User logged in",
+                                "metadata" : {"ip": "127.0.0.1"},
+                                "traceId" : "trace-123"
+                            }
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.timestamp").value("timestamp is required"));
+    }
+
+    @Test
+    void shouldRejectLogWithNoLevel() throws Exception {
+        mockMvc.perform(post("/api/v1/logs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                                "timestamp" : "2025-01-01T00:00:00Z",
+                                "serviceId" : "auth-service",
+                                "message" : "User logged in",
+                                "metadata" : {"ip": "127.0.0.1"},
+                                "traceId" : "trace-123"
+                            }
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.level").value("Log Level is required"));
+    }
+
+    @Test
+    void shouldRejectLogWithNoServiceId() throws Exception {
+        mockMvc.perform(post("/api/v1/logs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                                "timestamp" : "2025-01-01T00:00:00Z",
+                                "level" : "INFO",
+                                "message" : "User logged in",
+                                "metadata" : {"ip": "127.0.0.1"},
+                                "traceId" : "trace-123"
+                            }
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.serviceId").value("Service ID is required"));
     }
 
     @Test
@@ -94,7 +144,7 @@ public class LogControllerTest {
         mockMvc.perform(post("/api/v1/logs/batch")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                            [ 
+                            [
                                 {
                                     "timestamp" : "2025-01-01T00:00:00Z",
                                     "serviceId" : "auth-service",
@@ -127,5 +177,30 @@ public class LogControllerTest {
                 .andExpect(jsonPath("$[1].level").value("INFO"))
                 .andExpect(jsonPath("$[1].message").value("Payment processed"))
                 .andExpect(jsonPath("$[1].traceId").value("trace-456"));
+    }
+
+    @Test
+    void shouldRejectValidLogBatchWithInvalidData() throws Exception {
+        mockMvc.perform(post("/api/v1/logs/batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                """
+                [
+                    {
+                        "timestamp" : "2025-01-01T00:00:00Z",
+                                "level" : "INFO",
+                                "message" : "User logged in",
+                                "metadata" : {"ip": "127.0.0.1"},
+                                "traceId" : "trace-123"
+                    },
+                    {
+                        "timestamp" : "2025-01-01T00:00:00Z",
+                                "serviceId" : "auth-service",
+                                "metadata" : {"ip": "127.0.0.1"},
+                                "traceId" : "trace-123"
+                    }
+                ]
+                """))
+                .andExpect(status().isBadRequest());
     }
 }

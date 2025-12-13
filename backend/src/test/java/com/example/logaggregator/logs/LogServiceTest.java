@@ -40,8 +40,13 @@ public class LogServiceTest {
 
         LogEntry savedLog = new LogEntry();
         savedLog.setId(1L);
+        savedLog.setTimestamp(Instant.parse("2025-01-01T00:00:00Z"));
         savedLog.setServiceId("auth-service");
         savedLog.setLevel(LogStatus.INFO);
+        savedLog.setMessage("User Logged In");
+        savedLog.setTraceId("trace-123");
+        savedLog.setMetadata(Map.of("ip", "127.0.0.1"));
+        savedLog.setCreatedAt(Instant.now());
 
         when(logRepository.save(any(LogEntry.class)))
                 .thenReturn(savedLog);
@@ -51,14 +56,34 @@ public class LogServiceTest {
         assertThat(result.getId()).isEqualTo(1L);
         assertThat(result.getServiceId()).isEqualTo("auth-service");
         assertThat(result.getLevel()).isEqualTo(LogStatus.INFO);
+        assertThat(result.getMessage()).isEqualTo("User Logged In");
+        assertThat(result.getTraceId()).isEqualTo("trace-123");
+        assertThat(result.getTimestamp()).isEqualTo(Instant.parse("2025-01-01T00:00:00Z"));
+        assertThat(result.getMetadata()).containsEntry("ip", "127.0.0.1");
+        assertThat(result.getCreatedAt()).isNotNull();
 
         verify(logRepository,times(1)).save(any(LogEntry.class));
     }
 
     @Test
     void shouldSaveLogBatchIngestion(){
-        LogEntryRequest request1 =  mock(LogEntryRequest.class);
-        LogEntryRequest request2 =  mock(LogEntryRequest.class);
+        LogEntryRequest request1 =  new LogEntryRequest(
+                Instant.parse("2025-01-01T00:00:00Z"),
+                "auth-service",
+                LogStatus.INFO,
+                "User Logged In",
+                Map.of("ip", "127.0.0.1"),
+                "trace-123"
+        );
+
+        LogEntryRequest request2 =  new LogEntryRequest(
+                Instant.parse("2025-01-01T00:00:00Z"),
+                "payment-service",
+                LogStatus.ERROR,
+                "Payment Failed",
+                Map.of("amount", "0"),
+                "trace-456"
+        );
 
         List<LogEntryRequest> logEntries = new ArrayList<>();
         logEntries.add(request1);
@@ -70,5 +95,6 @@ public class LogServiceTest {
         var result = logService.ingestBatch(logEntries);
 
         assertThat(result).hasSize(2);
+        verify(logRepository,times(2)).save(any(LogEntry.class));
     }
 }
