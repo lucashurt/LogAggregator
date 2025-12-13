@@ -16,7 +16,7 @@ import java.util.Map;
 })
 @Data
 public class LogEntry {
-    @Id  // <-- ADD THIS
+    @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
