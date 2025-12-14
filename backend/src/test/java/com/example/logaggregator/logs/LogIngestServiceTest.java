@@ -3,6 +3,7 @@ package com.example.logaggregator.logs;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.example.logaggregator.logs.models.LogEntry;
 import com.example.logaggregator.logs.models.LogStatus;
+import com.example.logaggregator.logs.services.LogIngestService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -20,12 +21,12 @@ import java.util.List;
 import java.util.Map;
 
 @ExtendWith(MockitoExtension.class)
-public class LogServiceTest {
+public class LogIngestServiceTest {
 
     @Mock
     private LogRepository logRepository;
     @InjectMocks
-    private LogService logService;
+    private LogIngestService logIngestService;
 
     @Test
     void shouldSaveLogIngestion(){
@@ -51,7 +52,7 @@ public class LogServiceTest {
         when(logRepository.save(any(LogEntry.class)))
                 .thenReturn(savedLog);
 
-        LogEntry result = logService.ingest(request);
+        LogEntry result = logIngestService.ingest(request);
 
         assertThat(result.getId()).isEqualTo(1L);
         assertThat(result.getServiceId()).isEqualTo("auth-service");
@@ -92,7 +93,7 @@ public class LogServiceTest {
         when(logRepository.save(any(LogEntry.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        var result = logService.ingestBatch(logEntries);
+        var result = logIngestService.ingestBatch(logEntries);
 
         assertThat(result).hasSize(2);
         verify(logRepository,times(2)).save(any(LogEntry.class));

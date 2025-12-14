@@ -2,6 +2,7 @@ package com.example.logaggregator.logs;
 
 import com.example.logaggregator.logs.models.LogEntry;
 import com.example.logaggregator.logs.models.LogStatus;
+import com.example.logaggregator.logs.services.LogIngestService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -28,7 +29,7 @@ public class LogControllerTest {
     MockMvc mockMvc;
 
     @MockitoBean
-    private LogService logService;
+    private LogIngestService logIngestService;
 
     @Test
     void shouldIngestValidLog() throws Exception {
@@ -42,7 +43,7 @@ public class LogControllerTest {
         logEntry.setLevel(LogStatus.INFO);
         logEntry.setCreatedAt(Instant.now());
 
-        when(logService.ingest(any())).thenReturn(logEntry);
+        when(logIngestService.ingest(any())).thenReturn(logEntry);
         mockMvc.perform(post("/api/v1/logs")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -139,7 +140,7 @@ public class LogControllerTest {
         List<LogEntry> logEntries = new ArrayList<>();
         logEntries.add(logEntry1);
         logEntries.add(logEntry2);
-        when(logService.ingestBatch(any())).thenReturn(logEntries);
+        when(logIngestService.ingestBatch(any())).thenReturn(logEntries);
 
         mockMvc.perform(post("/api/v1/logs/batch")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -160,7 +161,7 @@ public class LogControllerTest {
                                     "message" : "Payment processed",
                                     "metadata" : {"amount": "100"},
                                     "traceId" : "trace-456"
-                               }   
+                               }
                             ]
                         """))
                 .andExpect(status().isCreated())

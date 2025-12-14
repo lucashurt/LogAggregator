@@ -27,7 +27,7 @@ public class LogEntrySpecification {
                 predicates.add(criteriaBuilder.equal(root.get("level"),request.level()));
             }
 
-            if (request.startTimestamp() != null && request.endTimestamp() != null && request.startTimestamp().isBefore(request.endTimestamp())) {
+            if (request.startTimestamp() != null && request.endTimestamp() != null) {
                 predicates.add(criteriaBuilder.between(
                         root.get("timestamp"),
                         request.startTimestamp(),
