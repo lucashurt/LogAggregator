@@ -3,6 +3,7 @@ package com.example.logaggregator.logs;
 import com.example.logaggregator.logs.models.LogEntry;
 import com.example.logaggregator.logs.models.LogStatus;
 import com.example.logaggregator.logs.services.LogIngestService;
+import com.example.logaggregator.logs.services.LogSearchService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -30,6 +31,9 @@ public class LogControllerTest {
 
     @MockitoBean
     private LogIngestService logIngestService;
+
+    @MockitoBean
+    private LogSearchService logSearchService;
 
     @Test
     void shouldIngestValidLog() throws Exception {
