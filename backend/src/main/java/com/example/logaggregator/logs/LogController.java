@@ -1,5 +1,6 @@
 package com.example.logaggregator.logs;
 
+import com.example.logaggregator.kafka.KafkaLogProducer;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.example.logaggregator.logs.DTOs.LogEntryResponse;
 import com.example.logaggregator.logs.DTOs.LogSearchRequest;
@@ -17,33 +18,33 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/logs")
 public class LogController {
-    private final LogIngestService logIngestService;
+    KafkaLogProducer kafkaLogProducer;
     private final LogSearchService logSearchService;
 
-    public LogController(LogIngestService logIngestService, LogSearchService logSearchService) {
-        this.logIngestService = logIngestService;
+    public LogController(KafkaLogProducer kafkaLogProducer, LogSearchService logSearchService) {
+        this.kafkaLogProducer = kafkaLogProducer;
         this.logSearchService = logSearchService;
     }
 
     @PostMapping
-    public ResponseEntity<LogEntryResponse> ingestLog(@Valid @RequestBody LogEntryRequest request) {
-        LogEntry response = logIngestService.ingest(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(response));
+    public ResponseEntity<Map<String, String>> ingestLog(@Valid @RequestBody LogEntryRequest request) {
+        kafkaLogProducer.sendLog(request);
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(Map.of("Status", "Log accepted for processing"));
     }
 
     @PostMapping("/batch")
-    public ResponseEntity<List<LogEntryResponse>> ingestBatch(@Valid @RequestBody List<LogEntryRequest> request) {
-        List<LogEntry> responses = logIngestService.ingestBatch(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(responses.stream()
-                        .map(this::toResponse)
-                        .collect(Collectors.toList()));
+    public ResponseEntity<Map<String, String>> ingestBatch(@Valid @RequestBody List<LogEntryRequest> request) {
+        kafkaLogProducer.sendLogBatch(request);
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(Map.of("status", request.size() + " logs accepted for processing"));
     }
 
     @GetMapping("/search")
