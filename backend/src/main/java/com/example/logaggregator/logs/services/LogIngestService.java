@@ -30,10 +30,7 @@ public class LogIngestService {
         logEntry.setTraceId(request.traceId());
         logEntry.setCreatedAt(Instant.now());
 
-        LogEntry saved =  logRepository.save(logEntry);
-        log.info("Ingested log: id={}, service={}, level={}",
-                saved.getId(), saved.getServiceId(), saved.getLevel());
-        return saved;
+        return logRepository.save(logEntry);
     }
 
     @Transactional

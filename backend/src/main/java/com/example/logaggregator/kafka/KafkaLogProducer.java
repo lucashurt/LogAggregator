@@ -25,12 +25,7 @@ public class KafkaLogProducer {
                 kafkaTemplate.send(TOPIC, request);
 
         future.whenComplete((r, e) -> {
-            if (e == null) {
-                log.info("Sent log to Kafka: offset={}, partition={}",
-                        r.getRecordMetadata().offset(),
-                        r.getRecordMetadata().partition());
-            }
-            else{
+            if(e != null) {
                 log.error("Failed to send log to Kafka", e);
             }
         });

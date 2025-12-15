@@ -19,8 +19,6 @@ public class KafkaLogConsumer {
     @KafkaListener(topics = "logs", groupId = "log-processor-group")
     public void consumeLog(LogEntryRequest request) {
         try{
-            log.info("Received log from Kafka: service: {}, level = {}",
-                    request.serviceId(), request.level());
             logIngestService.ingest(request);
         }
         catch (Exception e){
