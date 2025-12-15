@@ -22,16 +22,26 @@ public class KafkaLogProducer {
 
     public void sendLog(LogEntryRequest request) {
         CompletableFuture<SendResult<String, LogEntryRequest>> future =
-                kafkaTemplate.send(TOPIC, request);
+                kafkaTemplate.send(
+                        TOPIC,
+                        request.serviceId(),
+                        request);
 
         future.whenComplete((r, e) -> {
             if(e != null) {
-                log.error("Failed to send log to Kafka", e);
+                log.error("Failed to send log to Kafka: serviceId={}, traceId={}, error={}",
+                        request.serviceId(),
+                        request.traceId(),
+                        e.getMessage());
             }
         });
     }
 
     public void sendLogBatch(List<LogEntryRequest> requests) {
+        long startTime = System.currentTimeMillis();
         requests.forEach(this::sendLog);
+        long duration = System.currentTimeMillis() - startTime;
+
+        log.info("Batch of {} logs queued for sending in {}ms", requests.size(), duration);
     }
 }

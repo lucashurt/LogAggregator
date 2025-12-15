@@ -12,9 +12,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.*;
+import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.kafka.support.serializer.JsonSerializer;
+import org.springframework.util.backoff.FixedBackOff;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -24,6 +26,12 @@ public class KafkaConfig {
 
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
+
+    @Value("${spring.kafka.consumer.max-poll-records:500}")
+    private int maxPollRecords;
+
+    @Value("${spring.kafka.listener.concurrency:3}")
+    private int concurrency;
 
     @Bean
     public ObjectMapper objectMapper() {
@@ -39,6 +47,12 @@ public class KafkaConfig {
         config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
         config.put(JsonSerializer.ADD_TYPE_INFO_HEADERS, false);
+
+        config.put(ProducerConfig.BATCH_SIZE_CONFIG, 16384); // 16KB batches
+        config.put(ProducerConfig.LINGER_MS_CONFIG, 10); // Wait 10ms to batch messages
+        config.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "snappy"); // Compress messages
+        config.put(ProducerConfig.ACKS_CONFIG, "1"); // Wait for leader acknowledgment
+        config.put(ProducerConfig.BUFFER_MEMORY_CONFIG, 33554432); // 32MB buffer
 
         return new DefaultKafkaProducerFactory<>(config, new StringSerializer(),
                 new JsonSerializer<>(objectMapper));
@@ -61,6 +75,11 @@ public class KafkaConfig {
         config.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
         config.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
 
+        config.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecords); // Process up to 500 records per poll
+        config.put(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, 1024); // Wait for at least 1KB
+        config.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, 500); // Max wait 500ms
+        config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false); // Manual commit for better control
+
         return new DefaultKafkaConsumerFactory<>(config, new StringDeserializer(),
                 new JsonDeserializer<>(LogEntryRequest.class, objectMapper, false));
     }
@@ -71,6 +90,15 @@ public class KafkaConfig {
         ConcurrentKafkaListenerContainerFactory<String, LogEntryRequest> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory);
+        factory.setBatchListener(true);
+        factory.setConcurrency(concurrency);
+        factory.setCommonErrorHandler(new DefaultErrorHandler(
+                new FixedBackOff(1000L, 3L) // 1 second interval, 3 retries
+        ));
+        factory.getContainerProperties().setAckMode(
+                org.springframework.kafka.listener.ContainerProperties.AckMode.BATCH
+        );
+
         return factory;
     }
 }

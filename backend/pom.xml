@@ -107,7 +107,6 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.4</version>
                 <configuration>
-                    <!-- Exclude load tests from regular runs -->
                     <excludedGroups>load-test</excludedGroups>
                 </configuration>
             </plugin>
