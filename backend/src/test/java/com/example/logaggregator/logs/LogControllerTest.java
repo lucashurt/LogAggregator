@@ -1,8 +1,6 @@
 package com.example.logaggregator.logs;
 
-import com.example.logaggregator.logs.models.LogEntry;
-import com.example.logaggregator.logs.models.LogStatus;
-import com.example.logaggregator.logs.services.LogIngestService;
+import com.example.logaggregator.kafka.KafkaLogProducer;
 import com.example.logaggregator.logs.services.LogSearchService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,13 +10,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.http.MediaType;
 
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -30,24 +23,15 @@ public class LogControllerTest {
     MockMvc mockMvc;
 
     @MockitoBean
-    private LogIngestService logIngestService;
+    private KafkaLogProducer kafkaLogProducer;
 
     @MockitoBean
     private LogSearchService logSearchService;
 
     @Test
     void shouldIngestValidLog() throws Exception {
-        LogEntry logEntry = new LogEntry();
-        logEntry.setId(1L);
-        logEntry.setTimestamp(Instant.parse("2025-01-01T00:00:00Z"));
-        logEntry.setServiceId("auth-service");
-        logEntry.setMessage("User logged in");
-        logEntry.setTraceId("trace-123");
-        logEntry.setMetadata(Map.of("ip","127.0.0.1"));
-        logEntry.setLevel(LogStatus.INFO);
-        logEntry.setCreatedAt(Instant.now());
+        doNothing().when(kafkaLogProducer).sendLog(any());
 
-        when(logIngestService.ingest(any())).thenReturn(logEntry);
         mockMvc.perform(post("/api/v1/logs")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -60,12 +44,9 @@ public class LogControllerTest {
                                 "traceId" : "trace-123"
                             }
                         """))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.serviceId").value("auth-service"))
-                .andExpect(jsonPath("$.level").value("INFO"))
-                .andExpect(jsonPath("$.message").value("User logged in"))
-                .andExpect(jsonPath("$.traceId").value("trace-123"));
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.Status").value("Log accepted for processing"));
+        verify(kafkaLogProducer, times(1)).sendLog(any());
     }
 
     @Test
@@ -121,30 +102,7 @@ public class LogControllerTest {
 
     @Test
     void shouldIngestValidLogBatch() throws Exception {
-        LogEntry logEntry1 = new LogEntry();
-        logEntry1.setId(1L);
-        logEntry1.setTimestamp(Instant.parse("2025-01-01T00:00:00Z"));
-        logEntry1.setServiceId("auth-service");
-        logEntry1.setMessage("User logged in");
-        logEntry1.setTraceId("trace-123");
-        logEntry1.setMetadata(Map.of("ip","127.0.0.1"));
-        logEntry1.setLevel(LogStatus.INFO);
-        logEntry1.setCreatedAt(Instant.now());
-
-        LogEntry logEntry2 = new LogEntry();
-        logEntry2.setId(2L);
-        logEntry2.setTimestamp(Instant.parse("2025-01-01T00:00:00Z"));
-        logEntry2.setServiceId("payment-service");
-        logEntry2.setMessage("Payment processed");
-        logEntry2.setTraceId("trace-456");
-        logEntry2.setMetadata(Map.of("amount","100"));
-        logEntry2.setLevel(LogStatus.INFO);
-        logEntry2.setCreatedAt(Instant.now());
-
-        List<LogEntry> logEntries = new ArrayList<>();
-        logEntries.add(logEntry1);
-        logEntries.add(logEntry2);
-        when(logIngestService.ingestBatch(any())).thenReturn(logEntries);
+        doNothing().when(kafkaLogProducer).sendLog(any());
 
         mockMvc.perform(post("/api/v1/logs/batch")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -168,20 +126,10 @@ public class LogControllerTest {
                                }
                             ]
                         """))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("2 logs accepted for processing"));
+        verify(kafkaLogProducer, times(1)).sendLogBatch(anyList());
 
-                .andExpect(jsonPath("$[0].id").value(1))
-                .andExpect(jsonPath("$[0].serviceId").value("auth-service"))
-                .andExpect(jsonPath("$[0].level").value("INFO"))
-                .andExpect(jsonPath("$[0].message").value("User logged in"))
-                .andExpect(jsonPath("$[0].traceId").value("trace-123"))
-
-                .andExpect(jsonPath("$[1].id").value(2))
-                .andExpect(jsonPath("$[1].serviceId").value("payment-service"))
-                .andExpect(jsonPath("$[1].level").value("INFO"))
-                .andExpect(jsonPath("$[1].message").value("Payment processed"))
-                .andExpect(jsonPath("$[1].traceId").value("trace-456"));
     }
 
     @Test
