@@ -4,7 +4,6 @@ import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.example.logaggregator.logs.services.LogIngestService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 @Slf4j
