@@ -1,13 +1,12 @@
 package com.example.logaggregator.logs;
 
-import com.example.logaggregator.kafka.KafkaLogProducer;
+import com.example.logaggregator.kafka.ConsumersAndProducers.LogProducer;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.example.logaggregator.logs.DTOs.LogEntryResponse;
 import com.example.logaggregator.logs.DTOs.LogSearchRequest;
 import com.example.logaggregator.logs.DTOs.LogSearchResponse;
 import com.example.logaggregator.logs.models.LogEntry;
 import com.example.logaggregator.logs.models.LogStatus;
-import com.example.logaggregator.logs.services.LogIngestService;
 import com.example.logaggregator.logs.services.LogSearchService;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
@@ -19,30 +18,29 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/logs")
 public class LogController {
-    KafkaLogProducer kafkaLogProducer;
+    LogProducer logProducer;
     private final LogSearchService logSearchService;
 
-    public LogController(KafkaLogProducer kafkaLogProducer, LogSearchService logSearchService) {
-        this.kafkaLogProducer = kafkaLogProducer;
+    public LogController(LogProducer logProducer, LogSearchService logSearchService) {
+        this.logProducer = logProducer;
         this.logSearchService = logSearchService;
     }
 
     @PostMapping
     public ResponseEntity<Map<String, String>> ingestLog(@Valid @RequestBody LogEntryRequest request) {
-        kafkaLogProducer.sendLog(request);
+        logProducer.sendLog(request);
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(Map.of("Status", "Log accepted for processing"));
     }
 
     @PostMapping("/batch")
     public ResponseEntity<Map<String, String>> ingestBatch(@Valid @RequestBody List<LogEntryRequest> request) {
-        kafkaLogProducer.sendLogBatch(request);
+        logProducer.sendLogBatch(request);
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(Map.of("status", request.size() + " logs accepted for processing"));
     }

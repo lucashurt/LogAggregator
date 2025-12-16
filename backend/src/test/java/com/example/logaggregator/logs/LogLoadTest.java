@@ -1,6 +1,6 @@
 package com.example.logaggregator.logs;
 
-import com.example.logaggregator.kafka.KafkaLogProducer;
+import com.example.logaggregator.kafka.ConsumersAndProducers.LogProducer;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.example.logaggregator.logs.models.LogStatus;
 import com.example.logaggregator.logs.services.LogIngestService;
@@ -27,7 +27,7 @@ import static org.awaitility.Awaitility.await;
 public class LogLoadTest {
 
     @Autowired
-    private KafkaLogProducer kafkaLogProducer;
+    private LogProducer logProducer;
 
     @Autowired
     private LogRepository logRepository;
@@ -68,7 +68,7 @@ public class LogLoadTest {
         // Measure individual API call latency
         for (LogEntryRequest log : logs) {
             long start = System.nanoTime();
-            kafkaLogProducer.sendLog(log);
+            logProducer.sendLog(log);
             long end = System.nanoTime();
 
             responseTimes.add(Duration.ofNanos(end - start).toMillis());
@@ -141,7 +141,7 @@ public class LogLoadTest {
 
                     long start = System.currentTimeMillis();
                     logs.forEach(log -> {
-                        kafkaLogProducer.sendLog(log);
+                        logProducer.sendLog(log);
                         successCount.incrementAndGet();
                     });
                     long duration = System.currentTimeMillis() - start;
@@ -206,7 +206,7 @@ public class LogLoadTest {
         List<LogEntryRequest> logs = generateLogs(totalLogs);
 
         long sendStart = System.currentTimeMillis();
-        kafkaLogProducer.sendLogBatch(logs);
+        logProducer.sendLogBatch(logs);
         long sendEnd = System.currentTimeMillis();
         long sendDuration = sendEnd - sendStart;
 
@@ -303,7 +303,7 @@ public class LogLoadTest {
             executor.submit(() -> {
                 try {
                     long start = System.nanoTime();
-                    kafkaLogProducer.sendLog(log);
+                    logProducer.sendLog(log);
                     long end = System.nanoTime();
 
                     responseTimes.add(Duration.ofNanos(end - start).toMillis());
@@ -365,7 +365,7 @@ public class LogLoadTest {
         List<LogEntryRequest> logs = generateLogs(totalLogs);
 
         long apiStart = System.currentTimeMillis();
-        kafkaLogProducer.sendLogBatch(logs);
+        logProducer.sendLogBatch(logs);
         long apiEnd = System.currentTimeMillis();
         long apiDuration = apiEnd - apiStart;
 
@@ -478,7 +478,7 @@ public class LogLoadTest {
         // API calls with Kafka (just queuing)
         for (LogEntryRequest log : kafkaLogs) {
             long requestStart = System.nanoTime();
-            kafkaLogProducer.sendLog(log);  // Queue to Kafka
+            logProducer.sendLog(log);  // Queue to Kafka
             long requestEnd = System.nanoTime();
 
             kafkaResponseTimes.add(Duration.ofNanos(requestEnd - requestStart).toMillis());
