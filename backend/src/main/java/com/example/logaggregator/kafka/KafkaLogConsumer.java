@@ -26,34 +26,22 @@ public class KafkaLogConsumer {
             @Header(KafkaHeaders.RECEIVED_PARTITION) List<Integer> partitions,
             @Header(KafkaHeaders.OFFSET) List<Integer> offsets) {
         long startTime = System.currentTimeMillis();
+
         log.info("Received batch of {} logs from partition(s) {}",
                 requests.size(),
                 partitions.stream().distinct().toList());
 
-        int successfulLogs = 0;
-        int failedLogs = 0;
-        for (int i=0; i<requests.size(); i++) {
-            LogEntryRequest request = requests.get(i);
-            try{
-                logIngestService.ingest(request);
-                successfulLogs++;
-            }
-            catch (Exception e){
-                failedLogs++;
-                log.error("Failed to process log [partition={}, offset={}]: serviceId={}, traceId={}, error={}",
-                        partitions.get(i),
-                        offsets.get(i),
-                        request.serviceId(),
-                        request.traceId(),
-                        e.getMessage());
-            }
+        try{
+            logIngestService.ingestBatch(requests);
+            long duration = System.currentTimeMillis() - startTime;
+            double throughput = (requests.size() / (duration / 1000.0));
+
+            log.info("Batch processing complete: {} succeeded in {}ms ({} logs/sec)",
+                    requests.size(), duration, String.format("%.0f", throughput));
         }
-        long duration = System.currentTimeMillis() - startTime;
-        double throughput = (successfulLogs / (duration / 1000.0));
-
-        log.info("Batch processing complete: {} succeeded, {} failed in {}ms ({} logs/sec)",
-                successfulLogs, failedLogs, duration, String.format("%.0f", throughput));
-
+        catch (Exception e){
+            log.error("Error while processing logs from partition(s) {}: {}", partitions, e.getMessage());
+        }
     }
 
 }

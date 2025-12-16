@@ -90,12 +90,19 @@ public class LogIngestServiceTest {
         logEntries.add(request1);
         logEntries.add(request2);
 
-        when(logRepository.save(any(LogEntry.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(logRepository.saveAll(anyList()))
+                .thenAnswer(invocation -> {
+                    List<LogEntry> entries = invocation.getArgument(0);
+                    // Set IDs on the entries to simulate save
+                    for (int i = 0; i < entries.size(); i++) {
+                        entries.get(i).setId((long) (i + 1));
+                    }
+                    return entries;
+                });
 
         var result = logIngestService.ingestBatch(logEntries);
 
         assertThat(result).hasSize(2);
-        verify(logRepository,times(2)).save(any(LogEntry.class));
+        verify(logRepository,times(1)).saveAll(anyList());
     }
 }
