@@ -2,6 +2,7 @@ package com.example.logaggregator.logs;
 
 import com.example.logaggregator.kafka.ConsumersAndProducers.LogProducer;
 import com.example.logaggregator.logs.services.LogSearchService;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -155,5 +156,28 @@ public class LogControllerTest {
                 ]
                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldCallProducerWhenLogIsIngested() throws Exception {
+        // Given: Mock producer
+        doNothing().when(logProducer).sendLog(any());
+
+        // When: POST a log
+        mockMvc.perform(post("/api/v1/logs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                    {
+                        "timestamp" : "2025-01-01T00:00:00Z",
+                        "serviceId" : "test-service",
+                        "level" : "INFO",
+                        "message" : "Test producer call",
+                        "metadata" : {}
+                    }
+                """))
+                .andExpect(status().isAccepted());
+
+        // Then: Verify producer was called
+        verify(logProducer, times(1)).sendLog(any());
     }
 }
