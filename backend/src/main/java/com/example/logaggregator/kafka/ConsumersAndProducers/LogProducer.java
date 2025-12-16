@@ -1,5 +1,6 @@
 package com.example.logaggregator.kafka.ConsumersAndProducers;
 
+import com.example.logaggregator.kafka.KafkaMetrics;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -14,13 +15,17 @@ import java.util.concurrent.CompletableFuture;
 public class LogProducer {
 
     private final KafkaTemplate<String, LogEntryRequest> kafkaTemplate;
+    private final KafkaMetrics kafkaMetrics;
     private static final String TOPIC = "logs";
 
-    public LogProducer(KafkaTemplate<String, LogEntryRequest> kafkaTemplate) {
+    public LogProducer(KafkaTemplate<String, LogEntryRequest> kafkaTemplate, KafkaMetrics kafkaMetrics) {
         this.kafkaTemplate = kafkaTemplate;
+        this.kafkaMetrics = kafkaMetrics;
     }
 
     public void sendLog(LogEntryRequest request) {
+        long startTime = System.nanoTime();
+
         CompletableFuture<SendResult<String, LogEntryRequest>> future =
                 kafkaTemplate.send(
                         TOPIC,
@@ -34,6 +39,10 @@ public class LogProducer {
                         request.traceId(),
                         e.getMessage());
             }
+            else{
+                kafkaMetrics.recordLogPublished();
+                kafkaMetrics.recordApiResponse(startTime);
+            }
         });
     }
 
@@ -42,6 +51,7 @@ public class LogProducer {
         requests.forEach(this::sendLog);
         long duration = System.currentTimeMillis() - startTime;
 
+        kafkaMetrics.recordBatchPublished(requests.size());
         log.info("Batch of {} logs queued for sending in {}ms", requests.size(), duration);
     }
 }
