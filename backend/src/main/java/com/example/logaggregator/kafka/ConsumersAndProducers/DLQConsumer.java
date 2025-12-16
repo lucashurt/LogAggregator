@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 public class DLQConsumer {
-    @KafkaListener(topics = "logs-dlw", groupId = "dlq-inspector",autoStartup = "false")
+    @KafkaListener(topics = "logs-dlq", groupId = "dlq-inspector",autoStartup = "false")
 
     public void inspectDLQMessages(LogEntryRequest request){
         log.warn("DLQ Message Found: serviceId={}, error={}, timestamp={}",

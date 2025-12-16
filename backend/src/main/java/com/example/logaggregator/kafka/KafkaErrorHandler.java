@@ -12,10 +12,10 @@ import java.util.Map;
 @Slf4j
 @Service
 public class KafkaErrorHandler {
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final KafkaTemplate<String, LogEntryRequest> kafkaTemplate;
     private static final String DLQ_TOPIC = "logs-dlq";
 
-    public KafkaErrorHandler(KafkaTemplate<String, Object> kafkaTemplate) {
+    public KafkaErrorHandler(KafkaTemplate<String, LogEntryRequest> kafkaTemplate) {
         this.kafkaTemplate = kafkaTemplate;
     }
 
