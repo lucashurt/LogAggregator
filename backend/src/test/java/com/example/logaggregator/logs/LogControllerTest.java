@@ -1,6 +1,6 @@
 package com.example.logaggregator.logs;
 
-import com.example.logaggregator.kafka.KafkaLogProducer;
+import com.example.logaggregator.kafka.ConsumersAndProducers.LogProducer;
 import com.example.logaggregator.logs.services.LogSearchService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,14 +23,14 @@ public class LogControllerTest {
     MockMvc mockMvc;
 
     @MockitoBean
-    private KafkaLogProducer kafkaLogProducer;
+    private LogProducer logProducer;
 
     @MockitoBean
     private LogSearchService logSearchService;
 
     @Test
     void shouldIngestValidLog() throws Exception {
-        doNothing().when(kafkaLogProducer).sendLog(any());
+        doNothing().when(logProducer).sendLog(any());
 
         mockMvc.perform(post("/api/v1/logs")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -46,7 +46,7 @@ public class LogControllerTest {
                         """))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.Status").value("Log accepted for processing"));
-        verify(kafkaLogProducer, times(1)).sendLog(any());
+        verify(logProducer, times(1)).sendLog(any());
     }
 
     @Test
@@ -102,7 +102,7 @@ public class LogControllerTest {
 
     @Test
     void shouldIngestValidLogBatch() throws Exception {
-        doNothing().when(kafkaLogProducer).sendLog(any());
+        doNothing().when(logProducer).sendLog(any());
 
         mockMvc.perform(post("/api/v1/logs/batch")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -128,7 +128,7 @@ public class LogControllerTest {
                         """))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.status").value("2 logs accepted for processing"));
-        verify(kafkaLogProducer, times(1)).sendLogBatch(anyList());
+        verify(logProducer, times(1)).sendLogBatch(anyList());
 
     }
 
