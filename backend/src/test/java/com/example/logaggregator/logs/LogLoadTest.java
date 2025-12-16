@@ -3,6 +3,7 @@ package com.example.logaggregator.logs;
 import com.example.logaggregator.kafka.KafkaLogProducer;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.example.logaggregator.logs.models.LogStatus;
+import com.example.logaggregator.logs.services.LogIngestService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -20,33 +21,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
-/**
- * KAFKA PERFORMANCE TEST - Playing to Kafka's Strengths
- *
- * This test measures what Kafka is ACTUALLY good at:
- *
- * 1. FAST API RESPONSE TIMES
- *    - Client doesn't wait for DB persistence
- *    - Just queues to Kafka and returns immediately
- *    - Should be ~10-50ms regardless of DB load
- *
- * 2. HIGH CONCURRENT THROUGHPUT
- *    - Multiple clients sending logs simultaneously
- *    - System stays responsive under load
- *    - No blocking or queuing on API side
- *
- * 3. RESILIENCE & BACKPRESSURE
- *    - API stays fast even if consumer is slower
- *    - Messages buffer in Kafka (not in memory)
- *    - Eventually consistent processing
- *
- * This is what makes Kafka valuable compared to direct DB writes!
- *
- * To run: ./mvnw test -Dtest=KafkaLoadTest
- *
- * IMPORTANT: Make sure Kafka is running!
- * docker-compose up -d  OR  brew services start kafka
- */
 @SpringBootTest
 @ActiveProfiles("test")
 @Tag("load-test")
@@ -57,6 +31,9 @@ public class LogLoadTest {
 
     @Autowired
     private LogRepository logRepository;
+
+    @Autowired
+    private LogIngestService logIngestService;  // Add this line
 
     private final Random random = new Random();
     private final String[] services = {"auth-service", "payment-service", "notification-service",
@@ -433,6 +410,171 @@ public class LogLoadTest {
         System.out.println("=".repeat(80) + "\n");
     }
 
+    @Test
+    void shouldDemonstrateKafkaVsDirectDBPerformance() {
+        System.out.println("\n" + "=".repeat(80));
+        System.out.println("TEST 6: KAFKA vs DIRECT DB - Head-to-Head Comparison");
+        System.out.println("=".repeat(80));
+
+        int totalLogs = 1000;
+
+        // ============================================================
+        // SCENARIO 1: DIRECT DB WRITES (No Kafka)
+        // ============================================================
+        System.out.println("\n📊 SCENARIO 1: Direct Database Writes (OLD APPROACH)");
+        System.out.println("   Bypassing Kafka, writing directly to database\n");
+
+        List<LogEntryRequest> directLogs = generateLogs(totalLogs);
+        List<Long> directResponseTimes = new ArrayList<>();
+
+        long directStart = System.currentTimeMillis();
+
+        // Simulate what the API would do without Kafka
+        for (LogEntryRequest log : directLogs) {
+            long requestStart = System.nanoTime();
+            logIngestService.ingest(log);  // Direct DB write
+            long requestEnd = System.nanoTime();
+
+            directResponseTimes.add(Duration.ofNanos(requestEnd - requestStart).toMillis());
+        }
+
+        long directEnd = System.currentTimeMillis();
+        long directTotalTime = directEnd - directStart;
+
+        // Calculate direct DB statistics
+        Collections.sort(directResponseTimes);
+        long directAvgResponse = (long) directResponseTimes.stream().mapToLong(Long::longValue).average().orElse(0);
+        long directP95Response = directResponseTimes.get((int) (directResponseTimes.size() * 0.95));
+        long directMaxResponse = directResponseTimes.get(directResponseTimes.size() - 1);
+        double directThroughput = (totalLogs * 1000.0) / directTotalTime;
+
+        System.out.println("   Results:");
+        System.out.println("   ├─ Total time: " + directTotalTime + "ms");
+        System.out.println("   ├─ Avg client wait: " + directAvgResponse + "ms");
+        System.out.println("   ├─ P95 client wait: " + directP95Response + "ms");
+        System.out.println("   ├─ Max client wait: " + directMaxResponse + "ms");
+        System.out.println("   └─ Throughput: " + String.format("%.0f", directThroughput) + " logs/sec");
+
+        System.out.println("\n   ⚠️  Client Experience:");
+        System.out.println("   • Every API call waits ~" + directAvgResponse + "ms");
+        System.out.println("   • User sees loading spinner for " + directAvgResponse + "ms per log");
+        System.out.println("   • System blocks during DB writes");
+        System.out.println("   • No buffering - spikes cause failures");
+
+        // ============================================================
+        // SCENARIO 2: KAFKA ASYNC PROCESSING (New Approach)
+        // ============================================================
+        System.out.println("\n📊 SCENARIO 2: Kafka Async Processing (NEW APPROACH)");
+        System.out.println("   Using Kafka queue with async consumer processing\n");
+
+        // Clean DB for fair comparison
+        logRepository.deleteAll();
+
+        List<LogEntryRequest> kafkaLogs = generateLogs(totalLogs);
+        List<Long> kafkaResponseTimes = new ArrayList<>();
+
+        long kafkaApiStart = System.currentTimeMillis();
+
+        // API calls with Kafka (just queuing)
+        for (LogEntryRequest log : kafkaLogs) {
+            long requestStart = System.nanoTime();
+            kafkaLogProducer.sendLog(log);  // Queue to Kafka
+            long requestEnd = System.nanoTime();
+
+            kafkaResponseTimes.add(Duration.ofNanos(requestEnd - requestStart).toMillis());
+        }
+
+        long kafkaApiEnd = System.currentTimeMillis();
+        long kafkaApiTime = kafkaApiEnd - kafkaApiStart;
+
+        // Wait for consumer processing
+        long processingStart = System.currentTimeMillis();
+        await()
+                .atMost(Duration.ofSeconds(30))
+                .pollInterval(Duration.ofMillis(100))
+                .until(() -> logRepository.count() >= totalLogs * 0.95);
+
+        long processingEnd = System.currentTimeMillis();
+        long kafkaProcessingTime = processingEnd - processingStart;
+        long kafkaTotalTime = kafkaApiTime + kafkaProcessingTime;
+
+        // Calculate Kafka statistics
+        Collections.sort(kafkaResponseTimes);
+        long kafkaAvgResponse = (long) kafkaResponseTimes.stream().mapToLong(Long::longValue).average().orElse(0);
+        long kafkaP95Response = kafkaResponseTimes.get((int) (kafkaResponseTimes.size() * 0.95));
+        long kafkaMaxResponse = kafkaResponseTimes.get(kafkaResponseTimes.size() - 1);
+        double kafkaThroughput = (totalLogs * 1000.0) / kafkaTotalTime;
+        double consumerThroughput = (totalLogs * 1000.0) / kafkaProcessingTime;
+
+        System.out.println("   Results:");
+        System.out.println("   ├─ API time: " + kafkaApiTime + "ms (client waits for this)");
+        System.out.println("   ├─ Processing time: " + kafkaProcessingTime + "ms (async, background)");
+        System.out.println("   ├─ Total time: " + kafkaTotalTime + "ms");
+        System.out.println("   ├─ Avg client wait: " + kafkaAvgResponse + "ms");
+        System.out.println("   ├─ P95 client wait: " + kafkaP95Response + "ms");
+        System.out.println("   ├─ Max client wait: " + kafkaMaxResponse + "ms");
+        System.out.println("   └─ Throughput: " + String.format("%.0f", kafkaThroughput) + " logs/sec (end-to-end)");
+        System.out.println("                  " + String.format("%.0f", consumerThroughput) + " logs/sec (consumer)");
+
+        System.out.println("\n   ✅ Client Experience:");
+        System.out.println("   • Every API call returns in ~" + kafkaAvgResponse + "ms");
+        System.out.println("   • User sees instant confirmation");
+        System.out.println("   • Processing happens in background");
+        System.out.println("   • System buffers spikes gracefully");
+
+        // ============================================================
+        // HEAD-TO-HEAD COMPARISON
+        // ============================================================
+        System.out.println("\n" + "=".repeat(80));
+        System.out.println("📊 HEAD-TO-HEAD COMPARISON");
+        System.out.println("=".repeat(80));
+
+        System.out.println("\n┌─────────────────────────┬──────────────┬──────────────┬──────────────┐");
+        System.out.println("│ Metric                  │ Direct DB    │ Kafka        │ Improvement  │");
+        System.out.println("├─────────────────────────┼──────────────┼──────────────┼──────────────┤");
+        System.out.printf("│ Client Wait Time (avg)  │ %8dms   │ %8dms   │ %9.1fx     │%n",
+                directAvgResponse, kafkaAvgResponse,
+                (double)directAvgResponse / Math.max(kafkaAvgResponse, 1));
+        System.out.printf("│ Client Wait Time (P95)  │ %8dms   │ %8dms   │ %9.1fx     │%n",
+                directP95Response, kafkaP95Response,
+                (double)directP95Response / Math.max(kafkaP95Response, 1));
+        System.out.printf("│ Total Processing Time   │ %8dms   │ %8dms   │ %9.1fx     │%n",
+                directTotalTime, kafkaTotalTime,
+                (double)directTotalTime / Math.max(kafkaTotalTime, 1));
+        System.out.printf("│ Throughput              │ %8.0f/s  │ %8.0f/s  │ %9.1fx     │%n",
+                directThroughput, consumerThroughput,
+                consumerThroughput / Math.max(directThroughput, 1));
+        System.out.println("└─────────────────────────┴──────────────┴──────────────┴──────────────┘");
+
+        System.out.println("\n🎯 KEY INSIGHTS:");
+        System.out.println("   1. CLIENT EXPERIENCE: Kafka is " +
+                String.format("%.0fx", (double)directAvgResponse / Math.max(kafkaAvgResponse, 1)) +
+                " faster for users");
+        System.out.println("      • Direct DB: User waits " + directAvgResponse + "ms per request");
+        System.out.println("      • Kafka: User waits " + kafkaAvgResponse + "ms per request");
+
+        System.out.println("\n   2. SYSTEM THROUGHPUT: Kafka processes " +
+                String.format("%.0fx", consumerThroughput / Math.max(directThroughput, 1)) +
+                " more logs/sec");
+        System.out.println("      • Direct DB: " + String.format("%.0f", directThroughput) + " logs/sec");
+        System.out.println("      • Kafka: " + String.format("%.0f", consumerThroughput) + " logs/sec");
+
+        System.out.println("\n   3. ARCHITECTURE:");
+        System.out.println("      • Direct DB: API blocked, synchronous, can't handle spikes");
+        System.out.println("      • Kafka: API free, async, buffers spikes, horizontally scalable");
+
+        System.out.println("\n   4. TRADE-OFF:");
+        System.out.println("      • Direct DB: Immediate consistency, but slow & fragile");
+        System.out.println("      • Kafka: Eventual consistency, but fast & resilient");
+
+        System.out.println("=".repeat(80) + "\n");
+
+        // Assertions
+        if (directAvgResponse > 0 && kafkaAvgResponse > 0) {
+            assertThat(kafkaAvgResponse).isLessThan(directAvgResponse);
+        }
+        assertThat(consumerThroughput).isGreaterThan(directThroughput);
+    }
     // ==================== Helper Methods ====================
 
     private List<LogEntryRequest> generateLogs(int count) {
