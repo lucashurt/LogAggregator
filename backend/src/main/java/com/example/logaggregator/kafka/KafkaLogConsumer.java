@@ -15,9 +15,11 @@ import java.util.List;
 public class KafkaLogConsumer {
 
     private final LogIngestService logIngestService;
+    private final KafkaErrorHandler kafkaErrorHandler;
 
-    public KafkaLogConsumer(LogIngestService logIngestService) {
+    public KafkaLogConsumer(LogIngestService logIngestService, KafkaErrorHandler kafkaErrorHandler) {
         this.logIngestService = logIngestService;
+        this.kafkaErrorHandler = kafkaErrorHandler;
     }
 
     @KafkaListener(topics = "logs", groupId = "log-processor-group")
@@ -41,6 +43,15 @@ public class KafkaLogConsumer {
         }
         catch (Exception e){
             log.error("Error while processing logs from partition(s) {}: {}", partitions, e.getMessage());
+
+            for(int i=0; i<requests.size(); i++){
+                kafkaErrorHandler.sendToDLQ(
+                        requests.get(i),
+                        e,
+                        partitions.get(i),
+                        offsets.get(i)
+                );
+            }
         }
     }
 
