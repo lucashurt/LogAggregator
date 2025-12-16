@@ -48,11 +48,11 @@ public class KafkaConfig {
         config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
         config.put(JsonSerializer.ADD_TYPE_INFO_HEADERS, false);
 
-        config.put(ProducerConfig.BATCH_SIZE_CONFIG, 16384); // 16KB batches
+        config.put(ProducerConfig.BATCH_SIZE_CONFIG, 16384);
         config.put(ProducerConfig.LINGER_MS_CONFIG, 10); // Wait 10ms to batch messages
-        config.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "snappy"); // Compress messages
+        config.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "snappy");
         config.put(ProducerConfig.ACKS_CONFIG, "1"); // Wait for leader acknowledgment
-        config.put(ProducerConfig.BUFFER_MEMORY_CONFIG, 33554432); // 32MB buffer
+        config.put(ProducerConfig.BUFFER_MEMORY_CONFIG, 33554432);
 
         return new DefaultKafkaProducerFactory<>(config, new StringSerializer(),
                 new JsonSerializer<>(objectMapper));
@@ -76,7 +76,7 @@ public class KafkaConfig {
         config.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
 
         config.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecords); // Process up to 500 records per poll
-        config.put(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, 1024); // Wait for at least 1KB
+        config.put(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, 1024);
         config.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, 500); // Max wait 500ms
         config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false); // Manual commit for better control
 
