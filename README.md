@@ -20,22 +20,7 @@ _Distributed async processing with full observability_
 
 ### ✅ Current Architecture (Weeks 1–4 + Monitoring)
 
-Clients → Spring Boot REST API (HTTP 202 Accepted)
-↓
-Kafka Topic (logs)
-/ |
-/ |
-Consumer Consumer Consumer (3 threads, batch processing)
-\ | /
-\ | /
-PostgreSQL (Batch Insert: 500/transaction)
-↓
-Health Checks + Metrics (Micrometer/Prometheus)
-↓
-DLQ Topic (logs-dlq) ← Failed messages
-
-markdown
-Copy code
+Clients →  Spring Boot REST API (HTTP 202 Accepted) -> Kafka Topic (logs)   ->  3 Consumer threads ->    PostgreSQL (Batch Insert: 500/transaction)    -> Health Checks + Metrics (Micrometer/Prometheus -> DLQ Topic (logs-dlq)  ->  Failed messages
 
 **Key Components**
 - **Non-blocking API:** Returns immediately, queues to Kafka
@@ -48,22 +33,7 @@ Copy code
 
 ### 🎯 Target Architecture (Week 12)
 
-Load Balancer → Spring Boot APIs (Auto-scaled)
-↓
-Kafka Cluster
-↓
-Batch Processors (Kubernetes HPA)
-↙ ↓ ↘
-PostgreSQL Elasticsearch S3
-↓ ↓ ↓
-Metadata Search Cold Storage
-↓
-WebSocket Server → React Dashboard
-↓
-Redis Cache
-
-yaml
-Copy code
+Load Balancer → Spring Boot APIs (Auto-scaled)  ->  Kafka Cluster  -> Batch Processors (Kubernetes HPA) -> PostgreSQL Elasticsearch S3 -> Metadata Search Cold Storage -> WebSocket Server → React Dashboard -> Redis Cache
 
 ---
 
