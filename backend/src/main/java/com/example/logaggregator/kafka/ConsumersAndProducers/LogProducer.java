@@ -51,7 +51,6 @@ public class LogProducer {
         requests.forEach(this::sendLog);
         long duration = System.currentTimeMillis() - startTime;
 
-        kafkaMetrics.recordBatchPublished(requests.size());
         log.info("Batch of {} logs queued for sending in {}ms", requests.size(), duration);
     }
 }

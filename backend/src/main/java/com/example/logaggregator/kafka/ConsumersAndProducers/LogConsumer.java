@@ -42,7 +42,7 @@ public class LogConsumer {
             long duration = System.currentTimeMillis() - startTime;
             double throughput = (requests.size() / (duration / 1000.0));
 
-            kafkaMetrics.recordBatchPublished(requests.size());
+            kafkaMetrics.recordBatchConsumed(requests.size());
             kafkaMetrics.recordConsumerBatchProcessingTime(startTime);
 
             log.info("Batch processing complete: {} succeeded in {}ms ({} logs/sec)",
