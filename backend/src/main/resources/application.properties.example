@@ -39,3 +39,9 @@ spring.kafka.listener.ack-mode=batch
 logging.level.com.example.logaggregator.kafka=INFO
 logging.level.org.apache.kafka=WARN
 
+management.endpoints.web.exposure.include=health,info,prometheus,metrics
+management.endpoint.health.show-details=always
+management.prometheus.metrics.export.enabled=true
+info.app.name=Log Aggregator
+info.app.version=1.0.0
+info.app.description=Enterprise Log Aggregation System with Kafka
