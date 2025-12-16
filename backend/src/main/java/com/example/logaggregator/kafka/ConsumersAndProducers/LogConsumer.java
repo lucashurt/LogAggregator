@@ -30,8 +30,8 @@ public class LogConsumer {
     public void consumeLogBatch(
             List<LogEntryRequest> requests,
             @Header(KafkaHeaders.RECEIVED_PARTITION) List<Integer> partitions,
-            @Header(KafkaHeaders.OFFSET) List<Integer> offsets) {
-        long startTime = System.currentTimeMillis();
+            @Header(KafkaHeaders.OFFSET) List<Long> offsets) {
+        long startTime = System.nanoTime();
 
         log.info("Received batch of {} logs from partition(s) {}",
                 requests.size(),

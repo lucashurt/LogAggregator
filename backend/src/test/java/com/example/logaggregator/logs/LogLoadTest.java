@@ -4,6 +4,7 @@ import com.example.logaggregator.kafka.ConsumersAndProducers.LogProducer;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.example.logaggregator.logs.models.LogStatus;
 import com.example.logaggregator.logs.services.LogIngestService;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.within;
 import static org.awaitility.Awaitility.await;
 
 @SpringBootTest
@@ -33,7 +35,10 @@ public class LogLoadTest {
     private LogRepository logRepository;
 
     @Autowired
-    private LogIngestService logIngestService;  // Add this line
+    private LogIngestService logIngestService;
+
+    @Autowired
+    private MeterRegistry meterRegistry;
 
     private final Random random = new Random();
     private final String[] services = {"auth-service", "payment-service", "notification-service",
@@ -575,6 +580,79 @@ public class LogLoadTest {
         }
         assertThat(consumerThroughput).isGreaterThan(directThroughput);
     }
+
+    @Test
+    void shouldMaintainAccurateMetricsUnderLoad() throws InterruptedException {
+        System.out.println("\n" + "=".repeat(80));
+        System.out.println("TEST 7: METRICS ACCURACY - High Load Verification");
+        System.out.println("=".repeat(80));
+
+        int totalLogs = 1000;
+        System.out.println("\n🎯 Testing metrics accuracy with " + totalLogs + " logs");
+
+        // Given: Clean metrics state
+        logRepository.deleteAll();
+
+        // Get current metric values (baseline)
+        double initialPublished = meterRegistry.counter("logs.published.total").count();
+        double initialConsumed = meterRegistry.counter("logs.consumed.total").count();
+
+        // When: Send logs
+        List<LogEntryRequest> logs = generateLogs(totalLogs);
+
+        System.out.println("\n📤 Publishing " + totalLogs + " logs...");
+        long publishStart = System.currentTimeMillis();
+        logProducer.sendLogBatch(logs);
+        long publishEnd = System.currentTimeMillis();
+
+        System.out.println("   ✓ Published in " + (publishEnd - publishStart) + "ms");
+
+        // Wait for all logs to be consumed
+        System.out.println("\n⏳ Waiting for consumers to process...");
+        await()
+                .atMost(Duration.ofSeconds(30))
+                .pollInterval(Duration.ofMillis(500))
+                .until(() -> logRepository.count() >= totalLogs * 0.99); // 99% processed
+
+        // Wait a bit more to ensure all metrics are recorded
+        Thread.sleep(2000);
+
+        // Then: Verify metrics match actual counts
+        double finalPublished = meterRegistry.counter("logs.published.total").count();
+        double finalConsumed = meterRegistry.counter("logs.consumed.total").count();
+        long dbCount = logRepository.count();
+
+        double publishedDelta = finalPublished - initialPublished;
+        double consumedDelta = finalConsumed - initialConsumed;
+
+        System.out.println("\n📊 Metrics Accuracy Results:");
+        System.out.println("   Logs sent:              " + totalLogs);
+        System.out.println("   Metrics published:      " + (long)publishedDelta);
+        System.out.println("   Metrics consumed:       " + (long)consumedDelta);
+        System.out.println("   DB count:               " + dbCount);
+
+        // Calculate accuracy
+        double publishAccuracy = (publishedDelta / totalLogs) * 100;
+        double consumeAccuracy = (consumedDelta / dbCount) * 100;
+
+        System.out.println("\n   Publish metric accuracy:  " + String.format("%.2f%%", publishAccuracy));
+        System.out.println("   Consume metric accuracy:  " + String.format("%.2f%%", consumeAccuracy));
+
+        System.out.println("\n💡 Why This Matters:");
+        System.out.println("   Metrics must be accurate for:");
+        System.out.println("   - Alerting (false alarms if wrong)");
+        System.out.println("   - Capacity planning (scale decisions)");
+        System.out.println("   - SLA tracking (correctness verification)");
+
+        // Assertions
+        assertThat(publishedDelta).isCloseTo(totalLogs, within(5.0)); // Within 5 logs
+        assertThat(consumedDelta).isCloseTo(dbCount, within(5.0));    // Within 5 logs
+        assertThat(publishAccuracy).isGreaterThan(99.0);  // At least 99% accurate
+        assertThat(consumeAccuracy).isGreaterThan(99.0);  // At least 99% accurate
+
+        System.out.println("=".repeat(80) + "\n");
+    }
+
     // ==================== Helper Methods ====================
 
     private List<LogEntryRequest> generateLogs(int count) {
