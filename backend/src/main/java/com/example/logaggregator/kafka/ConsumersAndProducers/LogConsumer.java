@@ -1,6 +1,7 @@
 package com.example.logaggregator.kafka.ConsumersAndProducers;
 
 import com.example.logaggregator.kafka.KafkaErrorHandler;
+import com.example.logaggregator.kafka.KafkaMetrics;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.example.logaggregator.logs.services.LogIngestService;
 import lombok.extern.slf4j.Slf4j;
@@ -17,10 +18,12 @@ public class LogConsumer {
 
     private final LogIngestService logIngestService;
     private final KafkaErrorHandler kafkaErrorHandler;
+    private final KafkaMetrics kafkaMetrics;
 
-    public LogConsumer(LogIngestService logIngestService, KafkaErrorHandler kafkaErrorHandler) {
+    public LogConsumer(LogIngestService logIngestService, KafkaErrorHandler kafkaErrorHandler,KafkaMetrics kafkaMetrics) {
         this.logIngestService = logIngestService;
         this.kafkaErrorHandler = kafkaErrorHandler;
+        this.kafkaMetrics = kafkaMetrics;
     }
 
     @KafkaListener(topics = "logs", groupId = "log-processor-group")
@@ -39,6 +42,9 @@ public class LogConsumer {
             long duration = System.currentTimeMillis() - startTime;
             double throughput = (requests.size() / (duration / 1000.0));
 
+            kafkaMetrics.recordBatchPublished(requests.size());
+            kafkaMetrics.recordConsumerBatchProcessingTime(startTime);
+
             log.info("Batch processing complete: {} succeeded in {}ms ({} logs/sec)",
                     requests.size(), duration, String.format("%.0f", throughput));
         }
@@ -52,6 +58,7 @@ public class LogConsumer {
                         partitions.get(i),
                         offsets.get(i)
                 );
+                kafkaMetrics.recordLogFailed();
             }
         }
     }
