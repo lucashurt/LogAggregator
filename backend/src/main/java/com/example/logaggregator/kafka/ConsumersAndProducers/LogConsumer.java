@@ -1,5 +1,6 @@
-package com.example.logaggregator.kafka;
+package com.example.logaggregator.kafka.ConsumersAndProducers;
 
+import com.example.logaggregator.kafka.KafkaErrorHandler;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.example.logaggregator.logs.services.LogIngestService;
 import lombok.extern.slf4j.Slf4j;
@@ -12,12 +13,12 @@ import java.util.List;
 
 @Slf4j
 @Service
-public class KafkaLogConsumer {
+public class LogConsumer {
 
     private final LogIngestService logIngestService;
     private final KafkaErrorHandler kafkaErrorHandler;
 
-    public KafkaLogConsumer(LogIngestService logIngestService, KafkaErrorHandler kafkaErrorHandler) {
+    public LogConsumer(LogIngestService logIngestService, KafkaErrorHandler kafkaErrorHandler) {
         this.logIngestService = logIngestService;
         this.kafkaErrorHandler = kafkaErrorHandler;
     }

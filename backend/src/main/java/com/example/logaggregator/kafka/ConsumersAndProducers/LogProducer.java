@@ -1,4 +1,4 @@
-package com.example.logaggregator.kafka;
+package com.example.logaggregator.kafka.ConsumersAndProducers;
 
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -11,12 +11,12 @@ import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Service
-public class KafkaLogProducer {
+public class LogProducer {
 
     private final KafkaTemplate<String, LogEntryRequest> kafkaTemplate;
     private static final String TOPIC = "logs";
 
-    public KafkaLogProducer(KafkaTemplate<String, LogEntryRequest> kafkaTemplate) {
+    public LogProducer(KafkaTemplate<String, LogEntryRequest> kafkaTemplate) {
         this.kafkaTemplate = kafkaTemplate;
     }
 
