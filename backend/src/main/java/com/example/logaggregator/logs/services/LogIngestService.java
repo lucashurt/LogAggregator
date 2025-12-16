@@ -34,10 +34,21 @@ public class LogIngestService {
     }
 
     @Transactional
-    public List<LogEntry> ingestBatch(List<LogEntryRequest> requests){
-        return requests.
-                stream()
-                .map(this::ingest)
+    public List<LogEntry> ingestBatch(List<LogEntryRequest> requests) {
+        List<LogEntry> entities = requests.stream()
+                .map(req -> {
+                    LogEntry entry = new LogEntry();
+                    entry.setTimestamp(req.timestamp());
+                    entry.setServiceId(req.serviceId());
+                    entry.setLevel(req.level());
+                    entry.setMessage(req.message());
+                    entry.setMetadata(req.metadata());
+                    entry.setTraceId(req.traceId());
+                    entry.setCreatedAt(Instant.now());
+                    return entry;
+                })
                 .toList();
+
+        return logRepository.saveAll(entities);
     }
 }
