@@ -3,7 +3,6 @@ package com.example.logaggregator.elasticsearch;
 import org.springframework.data.elasticsearch.repository.ElasticsearchRepository;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.List;
 
 public interface LogElasticsearchRepository extends ElasticsearchRepository<LogDocument, String> {

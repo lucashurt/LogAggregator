@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -33,24 +34,26 @@ public class LogElasticsearchService {
     }
 
     public void indexLogBatch(List<LogEntryRequest> requests, List<LogEntry> savedLogs) {
-        try{
-            List<LogDocument> documents = requests.stream()
-                    .map(req -> {
-                        LogEntry saved = savedLogs.stream()
-                                .filter(log -> log.getServiceId().equals(req.serviceId())
-                                && log.getTimestamp().equals(req.timestamp()))
-                                .findFirst().orElse(null);
-                    Long postgresdId = saved != null ? saved.getId() : null;
-                    return convertToLogDocument(req, postgresdId);
-                    })
-                    .collect(Collectors.toList());
-            logElasticsearchRepository.saveAll(documents);
-            log.info("Batch indexed {} logs to Elasticsearch", documents.size());
-        }
-        catch(Exception e){
-            log.error("Failed to batch index logs to Elasticsearch: count={}, error={}",
-                    requests.size(), e.getMessage());
-        }
+        Map<String,Long> postgresIdMaps = savedLogs.stream()
+                .collect(Collectors.toMap(
+                        log -> log.getServiceId() + ":" + log.getTimestamp().toString(),
+                        LogEntry::getId,
+                        (existing,replacement) -> existing
+                ));
+
+        List<LogDocument> documents = requests.stream()
+                .map(req -> {
+                    String key = req.serviceId() + ":" + req.timestamp().toString();
+                    Long postgresId = postgresIdMaps.get(key);
+
+                    if (postgresId == null) {
+                        log.warn("No PostgreSQL ID found for log: serviceId={}, timestamp={}",
+                                req.serviceId(), req.timestamp());
+                    }
+
+                    return convertToLogDocument(req,postgresId);
+                })
+                .collect(Collectors.toList());
     }
 
     //HELPER FUNCTION
