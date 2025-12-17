@@ -50,9 +50,17 @@ public class LogElasticsearchSearchService {
                 Sort.by(Sort.Direction.DESC, "timestamp")
         );
 
+        Query query;
         // Create CriteriaQuery (NOT NativeQuery)
-        Query query = new CriteriaQuery(criteria)
-                .setPageable(pageable);
+        if (hasNoCriteria(request)) {
+            // Use a simple query that matches all documents when no filters specified
+            query = Query.findAll();
+            query.setPageable(pageable);
+        } else {
+            // Create CriteriaQuery with actual criteria
+            query = new CriteriaQuery(criteria);
+            query.setPageable(pageable);
+        }
 
         // Execute search
         SearchHits<LogDocument> searchHits = elasticsearchOperations.search(
@@ -78,6 +86,16 @@ public class LogElasticsearchSearchService {
                 page.getTotalElements());
 
         return page;
+    }
+
+
+    private boolean hasNoCriteria(LogSearchRequest request) {
+        return (request.serviceId() == null || request.serviceId().isBlank()) &&
+                (request.traceId() == null || request.traceId().isBlank()) &&
+                request.level() == null &&
+                request.startTimestamp() == null &&
+                request.endTimestamp() == null &&
+                (request.query() == null || request.query().isBlank());
     }
 
     /**
