@@ -7,7 +7,7 @@ import com.example.logaggregator.logs.DTOs.LogSearchRequest;
 import com.example.logaggregator.logs.DTOs.LogSearchResponse;
 import com.example.logaggregator.logs.models.LogEntry;
 import com.example.logaggregator.logs.models.LogStatus;
-import com.example.logaggregator.logs.services.LogSearchService;
+import com.example.logaggregator.logs.services.LogPostgresService;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -24,11 +24,11 @@ import java.util.Map;
 @RequestMapping("/api/v1/logs")
 public class LogController {
     LogProducer logProducer;
-    private final LogSearchService logSearchService;
+    private final LogPostgresService logPostgresService;
 
-    public LogController(LogProducer logProducer, LogSearchService logSearchService) {
+    public LogController(LogProducer logProducer, LogPostgresService logPostgresService) {
         this.logProducer = logProducer;
-        this.logSearchService = logSearchService;
+        this.logPostgresService = logPostgresService;
     }
 
     @PostMapping
@@ -57,7 +57,7 @@ public class LogController {
             @RequestParam(defaultValue = "50") Integer size)
     {
         LogSearchRequest request = new LogSearchRequest(serviceId,level,traceId,startTime,endTime,query,page,size);
-        Page<LogEntry> logResponses = logSearchService.search(request);
+        Page<LogEntry> logResponses = logPostgresService.search(request);
         List<LogEntryResponse> responses = logResponses.getContent()
                 .stream().map(this::toResponse)
                 .toList();
