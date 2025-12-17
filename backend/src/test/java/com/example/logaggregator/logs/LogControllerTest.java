@@ -1,5 +1,6 @@
 package com.example.logaggregator.logs;
 
+import com.example.logaggregator.elasticsearch.services.LogElasticsearchSearchService;
 import com.example.logaggregator.kafka.ConsumersAndProducers.LogProducer;
 import com.example.logaggregator.logs.services.LogPostgresSearchService;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,9 @@ public class LogControllerTest {
 
     @MockitoBean
     private LogPostgresSearchService logPostgresSearchService;
+
+    @MockitoBean
+    private LogElasticsearchSearchService  logElasticsearchSearchService;
 
     @Test
     void shouldIngestValidLog() throws Exception {

@@ -33,7 +33,7 @@ public class LogElasticsearchSpecification {
         }
 
         if (request.query() != null && !request.query().isBlank()) {
-            criteriaList.add(Criteria.where("message").contains(request.query()));
+            criteriaList.add(Criteria.where("message").matches(request.query()));
         }
 
         // If no criteria specified, match all documents
