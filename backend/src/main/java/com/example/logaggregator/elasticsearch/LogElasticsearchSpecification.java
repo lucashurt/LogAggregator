@@ -4,43 +4,49 @@ import com.example.logaggregator.logs.DTOs.LogSearchRequest;
 import org.springframework.data.elasticsearch.core.query.Criteria;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Component
 public class LogElasticsearchSpecification {
 
     public Criteria buildCriteria(LogSearchRequest request) {
-        Criteria criteria = new Criteria();
+        List<Criteria> criteriaList = new ArrayList<>();
 
         if (request.serviceId() != null && !request.serviceId().isBlank()) {
-            criteria = criteria.and(
-                    Criteria.where("serviceId").is(request.serviceId())
-            );
+            criteriaList.add(Criteria.where("serviceId").is(request.serviceId()));
         }
 
         if (request.traceId() != null && !request.traceId().isBlank()) {
-            criteria = criteria.and(
-                    Criteria.where("traceId").is(request.traceId())
-            );
+            criteriaList.add(Criteria.where("traceId").is(request.traceId()));
         }
 
         if (request.level() != null) {
-            criteria = criteria.and(
-                    Criteria.where("level").is(request.level().toString())
-            );
+            criteriaList.add(Criteria.where("level").is(request.level().toString()));
         }
 
         if (request.startTimestamp() != null && request.endTimestamp() != null) {
-            criteria = criteria.and(
+            criteriaList.add(
                     Criteria.where("timestamp")
                             .between(request.startTimestamp(), request.endTimestamp())
             );
         }
 
         if (request.query() != null && !request.query().isBlank()) {
-            criteria = criteria.and(
-                    Criteria.where("message").contains(request.query())
-            );
+            criteriaList.add(Criteria.where("message").contains(request.query()));
         }
 
-        return criteria;
+        // If no criteria specified, match all documents
+        if (criteriaList.isEmpty()) {
+            return new Criteria();
+        }
+
+        // Combine all criteria with AND
+        Criteria finalCriteria = criteriaList.get(0);
+        for (int i = 1; i < criteriaList.size(); i++) {
+            finalCriteria = finalCriteria.and(criteriaList.get(i));
+        }
+
+        return finalCriteria;
     }
 }
