@@ -1,6 +1,6 @@
 package com.example.logaggregator.kafka.ConsumersAndProducers;
 
-import com.example.logaggregator.elasticsearch.LogElasticsearchService;
+import com.example.logaggregator.elasticsearch.services.LogElasticsearchIngestService;
 import com.example.logaggregator.kafka.KafkaErrorHandler;
 import com.example.logaggregator.kafka.KafkaMetrics;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
@@ -18,13 +18,13 @@ import java.util.List;
 @Service
 public class LogConsumer {
 
-    private final LogElasticsearchService logElasticsearchService;
+    private final LogElasticsearchIngestService logElasticsearchIngestService;
     private final LogIngestService logIngestService;
     private final KafkaErrorHandler kafkaErrorHandler;
     private final KafkaMetrics kafkaMetrics;
 
-    public LogConsumer(LogIngestService logIngestService, KafkaErrorHandler kafkaErrorHandler,KafkaMetrics kafkaMetrics, LogElasticsearchService logElasticsearchService) {
-        this.logElasticsearchService = logElasticsearchService;
+    public LogConsumer(LogIngestService logIngestService, KafkaErrorHandler kafkaErrorHandler,KafkaMetrics kafkaMetrics, LogElasticsearchIngestService logElasticsearchIngestService) {
+        this.logElasticsearchIngestService = logElasticsearchIngestService;
         this.logIngestService = logIngestService;
         this.kafkaErrorHandler = kafkaErrorHandler;
         this.kafkaMetrics = kafkaMetrics;
@@ -43,7 +43,7 @@ public class LogConsumer {
 
         try{
             List<LogEntry> savedLogs = logIngestService.ingestBatch(requests);
-            logElasticsearchService.indexLogBatch(requests,savedLogs);
+            logElasticsearchIngestService.indexLogBatch(requests,savedLogs);
 
             long duration = System.currentTimeMillis() - startTime;
             double throughput = (requests.size() / (duration / 1000.0));

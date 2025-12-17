@@ -1,5 +1,7 @@
-package com.example.logaggregator.elasticsearch;
+package com.example.logaggregator.elasticsearch.services;
 
+import com.example.logaggregator.elasticsearch.LogDocument;
+import com.example.logaggregator.elasticsearch.LogElasticsearchRepository;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.example.logaggregator.logs.models.LogEntry;
 import lombok.extern.slf4j.Slf4j;
@@ -13,10 +15,10 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-public class LogElasticsearchService {
+public class LogElasticsearchIngestService {
     private final LogElasticsearchRepository logElasticsearchRepository;
 
-    public LogElasticsearchService(LogElasticsearchRepository logElasticsearchRepository) {
+    public LogElasticsearchIngestService(LogElasticsearchRepository logElasticsearchRepository) {
         this.logElasticsearchRepository = logElasticsearchRepository;
     }
 
