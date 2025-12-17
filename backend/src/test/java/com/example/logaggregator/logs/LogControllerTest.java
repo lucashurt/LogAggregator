@@ -1,7 +1,7 @@
 package com.example.logaggregator.logs;
 
 import com.example.logaggregator.kafka.ConsumersAndProducers.LogProducer;
-import com.example.logaggregator.logs.services.LogPostgresService;
+import com.example.logaggregator.logs.services.LogPostgresSearchService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -26,7 +26,7 @@ public class LogControllerTest {
     private LogProducer logProducer;
 
     @MockitoBean
-    private LogPostgresService logPostgresService;
+    private LogPostgresSearchService logPostgresSearchService;
 
     @Test
     void shouldIngestValidLog() throws Exception {

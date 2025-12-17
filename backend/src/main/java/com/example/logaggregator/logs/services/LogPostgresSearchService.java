@@ -17,11 +17,11 @@ import java.time.Instant;
 
 @Slf4j
 @Service
-public class LogPostgresService {
+public class LogPostgresSearchService {
     private final LogRepository logRepository;
     private final LogEntrySpecification logEntrySpecification;
 
-    public LogPostgresService(LogRepository logRepository, LogEntrySpecification logEntrySpecification) {
+    public LogPostgresSearchService(LogRepository logRepository, LogEntrySpecification logEntrySpecification) {
         this.logRepository = logRepository;
         this.logEntrySpecification = logEntrySpecification;
     }

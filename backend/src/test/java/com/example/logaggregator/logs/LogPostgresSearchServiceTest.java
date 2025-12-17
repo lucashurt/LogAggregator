@@ -3,7 +3,7 @@ package com.example.logaggregator.logs;
 import com.example.logaggregator.logs.DTOs.LogSearchRequest;
 import com.example.logaggregator.logs.models.LogEntry;
 import com.example.logaggregator.logs.models.LogStatus;
-import com.example.logaggregator.logs.services.LogPostgresService;
+import com.example.logaggregator.logs.services.LogPostgresSearchService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentMatchers;
@@ -23,7 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-public class LogPostgresServiceTest {
+public class LogPostgresSearchServiceTest {
     @Mock
     private LogRepository logRepository;
 
@@ -31,7 +31,7 @@ public class LogPostgresServiceTest {
     private LogEntrySpecification logEntrySpecification;
 
     @InjectMocks
-    private LogPostgresService logPostgresService;
+    private LogPostgresSearchService logPostgresSearchService;
 
     // ==================== Time Range Validator Tests ====================
 
@@ -40,7 +40,7 @@ public class LogPostgresServiceTest {
         Instant start = Instant.parse("2025-01-01T00:00:00.00Z");
         Instant end = Instant.parse("2025-01-02T00:00:00.00Z");
 
-        logPostgresService.validateTimeRange(start, end);
+        logPostgresSearchService.validateTimeRange(start, end);
     }
 
     @Test
@@ -48,7 +48,7 @@ public class LogPostgresServiceTest {
         Instant start = Instant.parse("2025-01-01T00:00:00.00Z");
         Instant end = Instant.parse("2025-01-08T00:00:00.00Z");
 
-        logPostgresService.validateTimeRange(start, end);
+        logPostgresSearchService.validateTimeRange(start, end);
     }
 
     @Test
@@ -56,7 +56,7 @@ public class LogPostgresServiceTest {
         Instant start = Instant.parse("2025-01-02T00:00:00.00Z");
         Instant end = Instant.parse("2025-01-01T00:00:00.00Z");
 
-        assertThatThrownBy(() -> logPostgresService.validateTimeRange(start, end))
+        assertThatThrownBy(() -> logPostgresSearchService.validateTimeRange(start, end))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Start time cannot be after end time");
     }
@@ -66,27 +66,27 @@ public class LogPostgresServiceTest {
         Instant start = Instant.parse("2025-01-01T00:00:00.00Z");
         Instant end = Instant.parse("2025-01-09T00:00:00.0Z");
 
-        assertThatThrownBy(() -> logPostgresService.validateTimeRange(start, end))
+        assertThatThrownBy(() -> logPostgresSearchService.validateTimeRange(start, end))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Time range cannot be greater than 7 days");
     }
     @Test
     void shouldPassValidationWhenBothTimesAreNull() {
-        logPostgresService.validateTimeRange(null, null);
+        logPostgresSearchService.validateTimeRange(null, null);
     }
 
     @Test
     void shouldPassValidationWhenOnlyStartTimeIsNull() {
         Instant endTime = Instant.parse("2025-01-05T00:00:00Z");
 
-        logPostgresService.validateTimeRange(null, endTime);
+        logPostgresSearchService.validateTimeRange(null, endTime);
     }
 
     @Test
     void shouldPassValidationWhenOnlyEndTimeIsNull() {
         Instant startTime = Instant.parse("2025-01-01T00:00:00Z");
 
-        logPostgresService.validateTimeRange(startTime, null);
+        logPostgresSearchService.validateTimeRange(startTime, null);
     }
 
     // ==================== Search Functionality Tests ====================
@@ -112,7 +112,7 @@ public class LogPostgresServiceTest {
         when(logRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(mockPage);
 
-        Page<LogEntry> result = logPostgresService.search(request);
+        Page<LogEntry> result = logPostgresSearchService.search(request);
 
         assertThat(result.getContent()).hasSize(3);
         assertThat(result.getTotalElements()).isEqualTo(3);
@@ -137,7 +137,7 @@ public class LogPostgresServiceTest {
         when(logRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(mockPage);
 
-        Page<LogEntry> result = logPostgresService.search(request);
+        Page<LogEntry> result = logPostgresSearchService.search(request);
 
         assertThat(result.getContent()).hasSize(10);
         assertThat(result.getTotalElements()).isEqualTo(10);
@@ -158,7 +158,7 @@ public class LogPostgresServiceTest {
         when(logRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(emptyPage);
 
-        Page<LogEntry> result = logPostgresService.search(request);
+        Page<LogEntry> result = logPostgresSearchService.search(request);
 
         assertThat(result.getContent()).isEmpty();
         assertThat(result.getTotalElements()).isEqualTo(0);
@@ -178,7 +178,7 @@ public class LogPostgresServiceTest {
         when(logRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(mockPage);
 
-        Page<LogEntry> result = logPostgresService.search(request);
+        Page<LogEntry> result = logPostgresSearchService.search(request);
 
         assertThat(result.getNumber()).isEqualTo(2); // Page 2
         assertThat(result.getSize()).isEqualTo(25);  // Size 25
@@ -209,7 +209,7 @@ public class LogPostgresServiceTest {
         when(logRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(mockPage);
 
-        logPostgresService.search(request);
+        logPostgresSearchService.search(request);
 
         verify(logRepository).findAll(
                 ArgumentMatchers.<Specification<LogEntry>>any(),
@@ -233,7 +233,7 @@ public class LogPostgresServiceTest {
                 50
         );
 
-        assertThatThrownBy(() -> logPostgresService.search(request))
+        assertThatThrownBy(() -> logPostgresSearchService.search(request))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Time range cannot be greater than 7 days");
 
@@ -254,7 +254,7 @@ public class LogPostgresServiceTest {
         when(logRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(mockPage);
 
-        Page<LogEntry> result = logPostgresService.search(request);
+        Page<LogEntry> result = logPostgresSearchService.search(request);
 
         assertThat(result.getContent()).hasSize(5);
         verify(logEntrySpecification).buildSpecification(argThat(req ->
@@ -278,7 +278,7 @@ public class LogPostgresServiceTest {
         when(logRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(mockPage);
 
-        Page<LogEntry> result = logPostgresService.search(request);
+        Page<LogEntry> result = logPostgresSearchService.search(request);
 
         assertThat(result.getContent()).hasSize(2);
         verify(logEntrySpecification).buildSpecification(argThat(req ->
