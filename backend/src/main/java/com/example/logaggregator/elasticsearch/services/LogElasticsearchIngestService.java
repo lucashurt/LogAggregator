@@ -36,26 +36,36 @@ public class LogElasticsearchIngestService {
     }
 
     public void indexLogBatch(List<LogEntryRequest> requests, List<LogEntry> savedLogs) {
-        Map<String,Long> postgresIdMaps = savedLogs.stream()
-                .collect(Collectors.toMap(
-                        log -> log.getServiceId() + ":" + log.getTimestamp().toString(),
-                        LogEntry::getId,
-                        (existing,replacement) -> existing
-                ));
+       try {
 
-        List<LogDocument> documents = requests.stream()
-                .map(req -> {
-                    String key = req.serviceId() + ":" + req.timestamp().toString();
-                    Long postgresId = postgresIdMaps.get(key);
+           Map<String, Long> postgresIdMaps = savedLogs.stream()
+                   .collect(Collectors.toMap(
+                           log -> log.getServiceId() + ":" + log.getTimestamp().toString(),
+                           LogEntry::getId,
+                           (existing, replacement) -> existing
+                   ));
 
-                    if (postgresId == null) {
-                        log.warn("No PostgreSQL ID found for log: serviceId={}, timestamp={}",
-                                req.serviceId(), req.timestamp());
-                    }
+           List<LogDocument> documents = requests.stream()
+                   .map(req -> {
+                       String key = req.serviceId() + ":" + req.timestamp().toString();
+                       Long postgresId = postgresIdMaps.get(key);
 
-                    return convertToLogDocument(req,postgresId);
-                })
-                .collect(Collectors.toList());
+                       if (postgresId == null) {
+                           log.warn("No PostgreSQL ID found for log: serviceId={}, timestamp={}",
+                                   req.serviceId(), req.timestamp());
+                       }
+
+                       return convertToLogDocument(req, postgresId);
+                   })
+                   .collect(Collectors.toList());
+
+           logElasticsearchRepository.saveAll(documents);
+           log.info("Batch indexed {} logs to Elasticsearch", documents.size());
+       }
+       catch (Exception e){
+           log.error("Failed to batch index logs to Elasticsearch: count={}, error={}",
+                   requests.size(), e.getMessage());
+       }
     }
 
     //HELPER FUNCTION
