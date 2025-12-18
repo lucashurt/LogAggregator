@@ -194,6 +194,7 @@ cd backend
 
 ### Search Logs
 * **Endpoint:** `GET /api/v1/logs/search`
+* **Logic:** The system automatically routes full-text queries to Elasticsearch and structured queries to PostgreSQL (Future optimization).
 * **Filters:**
     * `serviceId`
     * `level`
@@ -212,11 +213,11 @@ Run the full test suite (Unit, Component, Load, and Integration).
 ./mvnw test
 ```
 
-**Current Test Coverage (51 Tests):**
-* **Unit Tests:** 33
+**Current Test Coverage (67 Tests):
+* **Unit Tests:** 45
 * **Component Tests:** 10
-* **Load Tests:** 7
-* **Integration Tests:** 1
+* **Load Tests:** 5
+* **Integration Tests:** 7
 
 ---
 
@@ -251,5 +252,9 @@ This project demonstrates core concepts in backend engineering:
 * Observability & monitoring (Micrometer, Prometheus)
 * Load & performance testing
 * Production system design
+* Search Engines: Understanding Inverted Indexes vs B-Trees.
+* Bulk Indexing: Handling HTTP 413 Payload limits via Chunking.
+* Polyglot Persistence: Using the right database for the right job (SQL for reliability, NoSQL for search).
+* Load Testing: Proving linear vs constant time scalability.
 
 **Built with:** `Spring Boot 4.0` · `Apache Kafka` · `PostgreSQL` · `Micrometer` · `Prometheus`
