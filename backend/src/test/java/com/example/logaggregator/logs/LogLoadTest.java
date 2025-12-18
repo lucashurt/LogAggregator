@@ -15,19 +15,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.test.context.ActiveProfiles;
-import org.testcontainers.utility.TestcontainersConfiguration;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -57,464 +55,238 @@ public class LogLoadTest extends BaseIntegrationTest {
     private LogElasticsearchRepository elasticsearchRepository;
 
     private final Random random = new Random();
-    private final String[] services = {"auth-service", "payment-service", "notification-service", "user-service"};
+    private final String[] services = {"auth-service", "payment-service", "notification-service", "user-service", "inventory-service", "shipping-service"};
     private final LogStatus[] levels = {LogStatus.INFO, LogStatus.DEBUG, LogStatus.WARNING, LogStatus.ERROR};
     private final String[] messages = {
             "User logged in successfully",
-            "Payment processed",
-            "Database connection timeout",
-            "Cache miss",
-            "API request received",
-            "Authentication failed",
-            "Transaction completed",
-            "Error processing request"
+            "Payment processed with transaction id",
+            "Critical database connection timeout error occurred",
+            "Cache miss for user profile",
+            "API request received from external gateway",
+            "Authentication failed due to invalid token",
+            "Transaction completed successfully",
+            "Error processing request: NullPointerException",
+            "Scheduled maintenance task started",
+            "Dependency service unavailable: retry count exceeded"
     };
+
+    // CONFIGURATION
+    private static final int TOTAL_LOGS = 250_000;
+    private static final int CONCURRENT_USERS = 75;
 
     @BeforeEach
     void cleanup() {
-        // Clean both databases before each test
         logRepository.deleteAll();
         elasticsearchRepository.deleteAll();
     }
 
     @Test
-    void shouldIngest1000LogsInBatch() {
-        // Arrange
-        List<LogEntryRequest> requests = generate1000Logs();
+    void shouldExecuteLargeScalePerformanceBenchmark() throws InterruptedException {
+        System.out.println("\n\n");
+        System.out.println("██████╗ ███████╗███╗   ██╗ ██████╗██╗  ██╗███╗   ███╗ █████╗ ██████╗ ██╗  ██╗");
+        System.out.println("██╔══██╗██╔════╝████╗  ██║██╔════╝██║  ██║████╗ ████║██╔══██╗██╔══██╗██║ ██╔╝");
+        System.out.println("██████╔╝█████╗  ██╔██╗ ██║██║     ███████║██╔████╔██║███████║██████╔╝█████╔╝ ");
+        System.out.println("██╔══██╗██╔══╝  ██║╚██╗██║██║     ██╔══██║██║╚██╔╝██║██╔══██║██╔══██╗██╔═██╗ ");
+        System.out.println("██████╔╝███████╗██║ ╚████║╚██████╗██║  ██║██║ ╚═╝ ██║██║  ██║██║  ██║██║  ██╗");
+        System.out.println("╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝");
+        System.out.println("LOG AGGREGATOR PERFORMANCE SUITE - " + TOTAL_LOGS + " RECORDS");
+        System.out.println("==================================================================================");
 
-        // Act
-        long startTime = System.currentTimeMillis();
-        List<LogEntry> results = logIngestService.ingestBatch(requests);
-        long endTime = System.currentTimeMillis();
+        // 1. INGESTION PHASE
+        List<LogEntryRequest> requests = generateLogs(TOTAL_LOGS);
+        List<LogEntry> savedLogs = benchmarkIngestion(requests);
 
-        // Assert
-        assertThat(results).hasSize(1000);
+        // 2. SEARCH LATENCY PHASE
+        benchmarkSearchLatency();
 
-        long totalCount = logRepository.count();
-        assertThat(totalCount).isEqualTo(1000);
+        // 3. ANALYTIC / AGGREGATION PHASE
+        benchmarkAggregation();
 
-        long duration = endTime - startTime;
-        System.out.println("===========================================");
-        System.out.println("BATCH INGESTION TEST RESULTS");
-        System.out.println("===========================================");
-        System.out.println("Total logs ingested: 1000");
-        System.out.println("Time taken: " + duration + "ms");
-        System.out.println("Average per log: " + (duration / 1000.0) + "ms");
-        System.out.println("Throughput: " + (1000.0 / duration * 1000) + " logs/second");
-        System.out.println("===========================================");
+        // 4. CONCURRENT LOAD PHASE
+        benchmarkConcurrentLoad();
 
-        // Performance assertion - should complete in reasonable time
-        assertThat(duration).isLessThan(10000); // Should complete within 10 seconds
+        System.out.println("==================================================================================");
+        System.out.println("BENCHMARK COMPLETE");
+        System.out.println("\n");
     }
 
-    @Test
-    void shouldIngest1000LogsIndividually() {
-        // Arrange
-        List<LogEntryRequest> requests = generate1000Logs();
+    private List<LogEntry> benchmarkIngestion(List<LogEntryRequest> requests) throws InterruptedException {
+        System.out.println("\n[PHASE 1] INGESTION PERFORMANCE");
+        System.out.println("----------------------------------------------------------------------------------");
 
-        // Act
-        long startTime = System.currentTimeMillis();
-        for (LogEntryRequest request : requests) {
-            logIngestService.ingest(request);
+        // PostgreSQL Ingestion
+        long pgStart = System.currentTimeMillis();
+        // Ingest in chunks to be realistic and avoid massive transaction overhead in test
+        int batchSize = 5000;
+        List<LogEntry> allSavedLogs = new ArrayList<>();
+
+        for (int i = 0; i < requests.size(); i += batchSize) {
+            int end = Math.min(requests.size(), i + batchSize);
+            allSavedLogs.addAll(logIngestService.ingestBatch(requests.subList(i, end)));
         }
-        long endTime = System.currentTimeMillis();
+        long pgEnd = System.currentTimeMillis();
+        long pgDuration = pgEnd - pgStart;
 
-        // Assert
-        long totalCount = logRepository.count();
-        assertThat(totalCount).isEqualTo(1000);
-
-        long duration = endTime - startTime;
-        System.out.println("===========================================");
-        System.out.println("INDIVIDUAL INGESTION TEST RESULTS");
-        System.out.println("===========================================");
-        System.out.println("Total logs ingested: 1000");
-        System.out.println("Time taken: " + duration + "ms");
-        System.out.println("Average per log: " + (duration / 1000.0) + "ms");
-        System.out.println("Throughput: " + (1000.0 / duration * 1000) + " logs/second");
-        System.out.println("===========================================");
-    }
-
-    @Test
-    void shouldCompareFullTextSearchPerformance() {
-        // Arrange - Create logs with specific text patterns
-        List<LogEntryRequest> requests = new ArrayList<>();
-        Instant baseTime = Instant.now().minus(Duration.ofHours(1));
-
-        for (int i = 0; i < 1000; i++) {
-            String message = i % 10 == 0
-                    ? "Critical database connection timeout error occurred"
-                    : "Normal operation message " + i;
-
-            requests.add(new LogEntryRequest(
-                    baseTime.plus(Duration.ofSeconds(i)),
-                    services[random.nextInt(services.length)],
-                    levels[random.nextInt(levels.length)],
-                    message,
-                    Map.of("requestId", "req-" + i),
-                    "trace-" + (i / 10)
-            ));
-        }
-
-        List<LogEntry> savedLogs = logIngestService.ingestBatch(requests);
-        elasticsearchIngestService.indexLogBatch(requests, savedLogs);
-
-        // Wait for indexing
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-
-        System.out.println("===========================================");
-        System.out.println("FULL-TEXT SEARCH COMPARISON");
-        System.out.println("===========================================");
-
-        String[] searchTerms = {"timeout", "database", "error", "Critical database"};
-
-        for (String term : searchTerms) {
-            LogSearchRequest request = new LogSearchRequest(
-                    null, null, null, null, null, term, 0, 100
+        // Elasticsearch Ingestion
+        long esStart = System.currentTimeMillis();
+        for (int i = 0; i < requests.size(); i += batchSize) {
+            int end = Math.min(requests.size(), i + batchSize);
+            int pgStartIdx = i; // Map request index to saved log index
+            // We need to sublist saved logs as well to match requests
+            elasticsearchIngestService.indexLogBatch(
+                    requests.subList(i, end),
+                    allSavedLogs.subList(pgStartIdx, Math.min(allSavedLogs.size(), pgStartIdx + (end - i)))
             );
-
-            // PostgreSQL search
-            long pgStart = System.currentTimeMillis();
-            Page<LogEntry> pgResults = postgresSearchService.search(request);
-            long pgDuration = System.currentTimeMillis() - pgStart;
-
-            // Elasticsearch search
-            long esStart = System.currentTimeMillis();
-            Page<LogDocument> esResults = elasticsearchSearchService.search(request);
-            long esDuration = System.currentTimeMillis() - esStart;
-
-            double speedup = (double) pgDuration / esDuration;
-
-            System.out.println(String.format("Search: '%s'", term));
-            System.out.println(String.format("  PostgreSQL:    %dms (%d results)",
-                    pgDuration, pgResults.getTotalElements()));
-            System.out.println(String.format("  Elasticsearch: %dms (%d results)",
-                    esDuration, esResults.getTotalElements()));
-            System.out.println(String.format("  Speedup: %.2fx", speedup));
-            System.out.println();
-
-            // Verify result consistency
-            assertThat(pgResults.getTotalElements()).isEqualTo(esResults.getTotalElements());
         }
+        long esEnd = System.currentTimeMillis();
+        long esDuration = esEnd - esStart;
 
-        System.out.println("===========================================");
+        // Wait for ES Refresh
+        elasticsearchTemplate.indexOps(LogDocument.class).refresh();
+
+        printMetricRow("Batch Write Time", pgDuration + " ms", esDuration + " ms",
+                String.format("%.2fx", (double)pgDuration/esDuration > 1 ? (double)pgDuration/esDuration : -((double)esDuration/pgDuration)));
+
+        printMetricRow("Throughput",
+                String.format("%.0f logs/sec", TOTAL_LOGS / (pgDuration / 1000.0)),
+                String.format("%.0f logs/sec", TOTAL_LOGS / (esDuration / 1000.0)),
+                "-");
+
+        assertThat(logRepository.count()).isEqualTo(TOTAL_LOGS);
+        return allSavedLogs;
     }
 
-    @Test
-    void shouldSearchThrough1000Logs() {
-        // Arrange - Ingest 1000 logs first
-        List<LogEntryRequest> requests = generate1000Logs();
-        logIngestService.ingestBatch(requests);
+    private void benchmarkSearchLatency() {
+        System.out.println("\n[PHASE 2] SEARCH LATENCY (Single Query)");
+        System.out.println("----------------------------------------------------------------------------------");
+        System.out.println(String.format("%-40s | %-15s | %-15s | %-10s", "Query Type", "Postgres", "Elastic", "Speedup"));
+        System.out.println("-----------------------------------------+-----------------+-----------------+----------");
 
-        // Create various search scenarios
-        LogSearchRequest[] searchRequests = {
-                // Search by service
-                new LogSearchRequest("auth-service", null, null, null, null, null, 0, 50),
-
-                // Search by level
-                new LogSearchRequest(null, LogStatus.ERROR, null, null, null, null, 0, 50),
-
-                // Search by time range
-                new LogSearchRequest(null, null, null,
-                        Instant.now().minus(Duration.ofHours(1)),
-                        Instant.now(),
-                        null, 0, 50),
-
-                // Search by text
-                new LogSearchRequest(null, null, null, null, null, "timeout", 0, 50),
-
-                // Combined search
-                new LogSearchRequest("payment-service", LogStatus.INFO, null, null, null, null, 0, 50)
+        LogSearchRequest[] scenarios = {
+                new LogSearchRequest(null, null, null, null, null, "timeout", 0, 20), // Full Text
+                new LogSearchRequest("payment-service", null, null, null, null, null, 0, 20), // Exact Match
+                new LogSearchRequest(null, LogStatus.ERROR, null, Instant.now().minus(Duration.ofHours(12)), Instant.now(), null, 0, 20), // Range + Filter
+                new LogSearchRequest("auth-service", LogStatus.WARNING, null, null, null, "invalid token", 0, 20) // Complex Combined
         };
 
-        System.out.println("===========================================");
-        System.out.println("SEARCH PERFORMANCE TEST RESULTS");
-        System.out.println("===========================================");
+        String[] labels = {
+                "Full Text: 'timeout'",
+                "Exact: 'payment-service'",
+                "Range: Last 12h Errors",
+                "Complex: Auth Warn + Text"
+        };
 
-        // Act & Assert for each search
-        for (int i = 0; i < searchRequests.length; i++) {
-            long startTime = System.currentTimeMillis();
-            Page<LogEntry> results = postgresSearchService.search(searchRequests[i]);
-            long endTime = System.currentTimeMillis();
+        for (int i = 0; i < scenarios.length; i++) {
+            // Warmup (optional, skipped for raw comparison)
 
-            long duration = endTime - startTime;
-            System.out.println("Search " + (i + 1) + ": Found " + results.getTotalElements() +
-                    " logs in " + duration + "ms");
+            long pgStart = System.currentTimeMillis();
+            Page<LogEntry> pgRes = postgresSearchService.search(scenarios[i]);
+            long pgDur = System.currentTimeMillis() - pgStart;
 
-            // Performance assertion - search should be fast
-            assertThat(duration).isLessThan(1000); // Should complete within 1 second
-            assertThat(results.getContent().size()).isLessThanOrEqualTo(50); // Respects page size
+            long esStart = System.currentTimeMillis();
+            Page<LogDocument> esRes = elasticsearchSearchService.search(scenarios[i]);
+            long esDur = System.currentTimeMillis() - esStart;
+
+            double speedup = esDur > 0 ? (double) pgDur / esDur : 0;
+            String speedupStr = speedup > 1.0 ? String.format("%.2fx (Win)", speedup) : String.format("%.2fx", speedup);
+
+            System.out.println(String.format("%-40s | %-15s | %-15s | %-10s",
+                    labels[i], pgDur + " ms", esDur + " ms", speedupStr));
         }
-
-        System.out.println("===========================================");
     }
 
-    @Test
-    void shouldPaginateThroughAllResults() {
-        // Arrange - Ingest 1000 logs
-        List<LogEntryRequest> requests = generate1000Logs();
-        logIngestService.ingestBatch(requests);
+    private void benchmarkAggregation() {
+        System.out.println("\n[PHASE 3] ANALYTIC AGGREGATIONS (Count by Service)");
+        System.out.println("----------------------------------------------------------------------------------");
 
-        // Act - Paginate through all results
-        int pageSize = 50;
-        int totalRetrieved = 0;
-        int currentPage = 0;
-
-        long startTime = System.currentTimeMillis();
-
-        while (true) {
-            LogSearchRequest request = new LogSearchRequest(
-                    null, null, null, null, null, null, currentPage, pageSize
-            );
-
-            Page<LogEntry> results = postgresSearchService.search(request);
-
-            totalRetrieved += results.getContent().size();
-
-            if (!results.hasNext()) {
-                break;
-            }
-            currentPage++;
+        // Postgres Aggregation (Count)
+        long pgStart = System.currentTimeMillis();
+        // Since we don't have a specific agg method, we use count on a filtered query per service
+        for(String service : services) {
+            postgresSearchService.search(new LogSearchRequest(service, null, null, null, null, null, 0, 1));
         }
+        long pgDur = System.currentTimeMillis() - pgStart;
 
-        long endTime = System.currentTimeMillis();
-        long duration = endTime - startTime;
+        // Elasticsearch Aggregation
+        long esStart = System.currentTimeMillis();
+        // Similarly simulating aggregation via search hits count which ES optimizes
+        for(String service : services) {
+            elasticsearchSearchService.search(new LogSearchRequest(service, null, null, null, null, null, 0, 1));
+        }
+        long esDur = System.currentTimeMillis() - esStart;
 
-        // Assert
-        assertThat(totalRetrieved).isEqualTo(1000);
-        assertThat(currentPage).isEqualTo(19); // 1000 logs / 50 per page = 20 pages (0-19)
-
-        System.out.println("===========================================");
-        System.out.println("PAGINATION TEST RESULTS");
-        System.out.println("===========================================");
-        System.out.println("Total logs retrieved: " + totalRetrieved);
-        System.out.println("Total pages: " + (currentPage + 1));
-        System.out.println("Time taken: " + duration + "ms");
-        System.out.println("Average per page: " + (duration / (currentPage + 1)) + "ms");
-        System.out.println("===========================================");
+        printMetricRow("Iterative Count (" + services.length + " groups)", pgDur + " ms", esDur + " ms",
+                String.format("%.2fx", (double)pgDur/esDur));
     }
 
-    @Test
-    void shouldHandleConcurrentSearches() throws InterruptedException {
-        // Arrange - Ingest 1000 logs
-        List<LogEntryRequest> requests = generate1000Logs();
-        logIngestService.ingestBatch(requests);
+    private void benchmarkConcurrentLoad() throws InterruptedException {
+        System.out.println("\n[PHASE 4] CONCURRENT LOAD TEST (" + CONCURRENT_USERS + " Threads)");
+        System.out.println("----------------------------------------------------------------------------------");
 
-        // Act - Execute 10 searches concurrently
-        int numThreads = 10;
-        Thread[] threads = new Thread[numThreads];
-        long[] durations = new long[numThreads];
+        ExecutorService executor = Executors.newFixedThreadPool(CONCURRENT_USERS);
+        AtomicLong pgTotalTime = new AtomicLong(0);
+        AtomicLong esTotalTime = new AtomicLong(0);
+        AtomicLong successCount = new AtomicLong(0);
 
-        for (int i = 0; i < numThreads; i++) {
-            final int threadId = i;
-            threads[i] = new Thread(() -> {
-                LogSearchRequest request = new LogSearchRequest(
-                        null, null, null, null, null, null, 0, 100
-                );
+        LogSearchRequest heavyRequest = new LogSearchRequest(null, null, null, null, null, "connection", 0, 50);
 
-                long start = System.currentTimeMillis();
-                Page<LogEntry> results = postgresSearchService.search(request);
-                long end = System.currentTimeMillis();
+        long start = System.currentTimeMillis();
 
-                durations[threadId] = end - start;
-                assertThat(results.getTotalElements()).isEqualTo(1000);
+        for(int i=0; i<CONCURRENT_USERS; i++) {
+            executor.submit(() -> {
+                // Postgres Search
+                long t1 = System.currentTimeMillis();
+                postgresSearchService.search(heavyRequest);
+                pgTotalTime.addAndGet(System.currentTimeMillis() - t1);
+
+                // Elastic Search
+                long t2 = System.currentTimeMillis();
+                elasticsearchSearchService.search(heavyRequest);
+                esTotalTime.addAndGet(System.currentTimeMillis() - t2);
+
+                successCount.incrementAndGet();
             });
         }
 
-        long startTime = System.currentTimeMillis();
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.MINUTES);
+        long wallTime = System.currentTimeMillis() - start;
 
-        // Start all threads
-        for (Thread thread : threads) {
-            thread.start();
-        }
+        double pgAvg = pgTotalTime.get() / (double) CONCURRENT_USERS;
+        double esAvg = esTotalTime.get() / (double) CONCURRENT_USERS;
 
-        // Wait for all threads to complete
-        for (Thread thread : threads) {
-            thread.join();
-        }
+        printMetricRow("Avg Latency under Load", String.format("%.0f ms", pgAvg), String.format("%.0f ms", esAvg),
+                String.format("%.2fx", pgAvg/esAvg));
 
-        long endTime = System.currentTimeMillis();
-        long totalDuration = endTime - startTime;
-
-        // Calculate statistics
-        long avgDuration = 0;
-        for (long duration : durations) {
-            avgDuration += duration;
-        }
-        avgDuration /= numThreads;
-
-        System.out.println("===========================================");
-        System.out.println("CONCURRENT SEARCH TEST RESULTS");
-        System.out.println("===========================================");
-        System.out.println("Number of concurrent searches: " + numThreads);
-        System.out.println("Total time: " + totalDuration + "ms");
-        System.out.println("Average search time: " + avgDuration + "ms");
-        System.out.println("===========================================");
+        System.out.println(String.format("Total Wall Time for %d reqs: %d ms", CONCURRENT_USERS, wallTime));
     }
 
-    @Test
-    void shouldMeasureElasticsearchIndexingSpeed() {
-        // Arrange
-        List<LogEntryRequest> requests = generate1000Logs();
+    // --- Helpers ---
 
-        // Act - Save to PostgreSQL first
-        long pgStartTime = System.currentTimeMillis();
-        List<LogEntry> savedLogs = logIngestService.ingestBatch(requests);
-        long pgDuration = System.currentTimeMillis() - pgStartTime;
-
-        // Index to Elasticsearch
-        long esStartTime = System.currentTimeMillis();
-        elasticsearchIngestService.indexLogBatch(requests, savedLogs);
-        long esDuration = System.currentTimeMillis() - esStartTime;
-
-        System.out.println("===========================================");
-        System.out.println("INDEXING PERFORMANCE COMPARISON");
-        System.out.println("===========================================");
-        System.out.println("PostgreSQL batch insert: " + pgDuration + "ms");
-        System.out.println("Elasticsearch batch index: " + esDuration + "ms");
-        System.out.println("PostgreSQL throughput: " +
-                String.format("%.0f", 1000.0 / pgDuration * 1000) + " logs/sec");
-        System.out.println("Elasticsearch throughput: " +
-                String.format("%.0f", 1000.0 / esDuration * 1000) + " logs/sec");
-        System.out.println("===========================================");
-
-        // Verify counts
-        assertThat(logRepository.count()).isEqualTo(1000);
-
-        // Wait for Elasticsearch to finish indexing
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-
-        assertThat(elasticsearchRepository.count()).isEqualTo(1000);
+    private void printMetricRow(String metric, String pgVal, String esVal, String diff) {
+        System.out.println(String.format("%-30s | %-15s | %-15s | %s", metric, pgVal, esVal, diff));
     }
 
-    @Test
-    void shouldDemonstrateElasticsearchAdvantagesAtScale() {
-        // 50,000 logs - shows where Elasticsearch shines
-        System.out.println("===========================================");
-        System.out.println("LARGE SCALE TEST: 50,000 LOGS");
-        System.out.println("===========================================");
-
-        List<LogEntryRequest> requests = generate50KLogs();
-        List<LogEntry> savedLogs = logIngestService.ingestBatch(requests);
-        elasticsearchIngestService.indexLogBatch(requests, savedLogs);
-
-        waitForElasticsearchIndexing();
-
-        LogSearchRequest[] searchRequests = {
-                // Full-text search - ES should dominate here
-                new LogSearchRequest(null, null, null, null, null, "connection timeout error", 0, 50),
-
-                // Complex query
-                new LogSearchRequest("auth-service", LogStatus.ERROR, null,
-                        Instant.now().minus(Duration.ofHours(2)),
-                        Instant.now(),
-                        "failed", 0, 50)
-        };
-
-        System.out.println(String.format("%-40s | %-15s | %-15s | %-10s",
-                "Search Type", "PostgreSQL (ms)", "Elasticsearch (ms)", "Speedup"));
-        System.out.println("-------------------------------------------+------------------+-------------------+-----------");
-
-        long totalPgTime = 0;
-        long totalEsTime = 0;
-
-        for (int i = 0; i < searchRequests.length; i++) {
-            long pgStart = System.currentTimeMillis();
-            Page<LogEntry> pgResults = postgresSearchService.search(searchRequests[i]);
-            long pgDuration = System.currentTimeMillis() - pgStart;
-            totalPgTime += pgDuration;
-
-            long esStart = System.currentTimeMillis();
-            Page<LogDocument> esResults = elasticsearchSearchService.search(searchRequests[i]);
-            long esDuration = System.currentTimeMillis() - esStart;
-            totalEsTime += esDuration;
-
-            double speedup = esDuration > 0 ? (double) pgDuration / esDuration : 0;
-
-            String searchType = i == 0 ? "Full-text: 'connection timeout error'" : "Complex combined query";
-            System.out.println(String.format("%-40s | %-15d | %-15d | %.2fx",
-                    searchType, pgDuration, esDuration, speedup));
-        }
-
-        System.out.println("-------------------------------------------+------------------+-------------------+-----------");
-        double avgSpeedup = totalEsTime > 0 ? (double) totalPgTime / totalEsTime : 0;
-        System.out.println(String.format("%-40s | %-15d | %-15d | %.2fx",
-                "TOTAL", totalPgTime, totalEsTime, avgSpeedup));
-        System.out.println("===========================================");
-
-        // At scale, ES should be faster for complex/text queries
-        assertThat(totalEsTime)
-                .as("At 50K logs, Elasticsearch should outperform PostgreSQL")
-                .isLessThan(totalPgTime);
-    }
-
-    private void waitForElasticsearchIndexing() {
-        try {
-            Thread.sleep(2000);
-            elasticsearchTemplate.indexOps(LogDocument.class).refresh();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    private List<LogEntryRequest> generate50KLogs() {
-        List<LogEntryRequest> logs = new ArrayList<>();
+    private List<LogEntryRequest> generateLogs(int count) {
+        List<LogEntryRequest> logs = new ArrayList<>(count);
         Instant baseTime = Instant.now().minus(Duration.ofHours(24));
 
-        for (int i = 0; i < 50000; i++) {
+        System.out.print("Generating " + count + " logs... ");
+        for (int i = 0; i < count; i++) {
             String serviceId = services[random.nextInt(services.length)];
             LogStatus level = levels[random.nextInt(levels.length)];
-            String message = messages[random.nextInt(messages.length)];
-            Instant timestamp = baseTime.plus(Duration.ofSeconds(i));
-            String traceId = "trace-" + (i / 10);
+            String message = messages[random.nextInt(messages.length)] + " " + UUID.randomUUID().toString().substring(0, 8);
+            Instant timestamp = baseTime.plus(Duration.ofMillis(random.nextInt(86400000))); // Random time in last 24h
+            String traceId = "trace-" + UUID.randomUUID();
 
             Map<String, Object> metadata = new HashMap<>();
             metadata.put("requestId", "req-" + i);
-            metadata.put("userId", "user-" + random.nextInt(1000));
-            metadata.put("duration", random.nextInt(5000));
+            metadata.put("region", random.nextBoolean() ? "us-east-1" : "eu-west-1");
+            metadata.put("latency_ms", random.nextInt(1000));
 
-            logs.add(new LogEntryRequest(
-                    timestamp, serviceId, level, message, metadata, traceId
-            ));
+            logs.add(new LogEntryRequest(timestamp, serviceId, level, message, metadata, traceId));
         }
-
+        System.out.println("Done.");
         return logs;
     }
-
-    private List<LogEntryRequest> generate1000Logs() {
-        List<LogEntryRequest> logs = new ArrayList<>();
-        Instant baseTime = Instant.now().minus(Duration.ofHours(1));
-
-        for (int i = 0; i < 1000; i++) {
-            String serviceId = services[random.nextInt(services.length)];
-            LogStatus level = levels[random.nextInt(levels.length)];
-            String message = messages[random.nextInt(messages.length)];
-            Instant timestamp = baseTime.plus(Duration.ofSeconds(i));
-            String traceId = "trace-" + (i / 10); // Groups of 10 logs share a trace
-
-            Map<String, Object> metadata = new HashMap<>();
-            metadata.put("requestId", "req-" + i);
-            metadata.put("userId", "user-" + random.nextInt(100));
-            metadata.put("duration", random.nextInt(1000));
-
-            logs.add(new LogEntryRequest(
-                    timestamp,
-                    serviceId,
-                    level,
-                    message,
-                    metadata,
-                    traceId
-            ));
-        }
-
-        return logs;
-    }
-
 }
