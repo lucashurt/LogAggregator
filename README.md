@@ -192,18 +192,12 @@ cd backend
 * **Endpoint:** `POST /api/v1/logs/batch`
 * **Response:** `202 Accepted`
 
-### Search Logs
+### Search Logs (Hybrid High-Availability)
 * **Endpoint:** `GET /api/v1/logs/search`
-* **Logic:** The system automatically routes full-text queries to Elasticsearch and structured queries to PostgreSQL (Future optimization).
-* **Filters:**
-    * `serviceId`
-    * `level`
-    * `traceId`
-    * `startTime` / `endTime`
-    * `query`
-    * `page`, `size`
-
----
+* **Architecture:**
+    * **Primary:** All queries hit **Elasticsearch** first for maximum performance.
+    * **Fallback:** If Elasticsearch is unreachable, the system automatically degrades gracefully and routes queries to **PostgreSQL** to ensure data accessibility.
+* **Params:** `query` (text), `serviceId`, `level`, `startTime`, `endTime`.---
 
 ## 🧪 Running Tests
 
