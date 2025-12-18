@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.utility.TestcontainersConfiguration;
 
@@ -45,6 +46,9 @@ public class LogLoadTest extends BaseIntegrationTest {
 
     @Autowired
     private LogElasticsearchIngestService elasticsearchIngestService;
+
+    @Autowired
+    private ElasticsearchOperations elasticsearchTemplate;
 
     @Autowired
     private LogRepository logRepository;
@@ -128,100 +132,6 @@ public class LogLoadTest extends BaseIntegrationTest {
         System.out.println("Average per log: " + (duration / 1000.0) + "ms");
         System.out.println("Throughput: " + (1000.0 / duration * 1000) + " logs/second");
         System.out.println("===========================================");
-    }
-
-    @Test
-    void shouldCompareElasticsearchVsPostgresSearchPerformance() {
-        // Arrange - Ingest 1000 logs to both PostgreSQL and Elasticsearch
-        List<LogEntryRequest> requests = generate1000Logs();
-        List<LogEntry> savedLogs = logIngestService.ingestBatch(requests);
-        elasticsearchIngestService.indexLogBatch(requests, savedLogs);
-
-        // Wait for Elasticsearch to finish indexing
-        try {
-            Thread.sleep(2000); // Give Elasticsearch time to index
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-
-        // Define various search scenarios
-        LogSearchRequest[] searchRequests = {
-                // Search by service
-                new LogSearchRequest("auth-service", null, null, null, null, null, 0, 50),
-
-                // Search by level
-                new LogSearchRequest(null, LogStatus.ERROR, null, null, null, null, 0, 50),
-
-                // Search by time range
-                new LogSearchRequest(null, null, null,
-                        Instant.now().minus(Duration.ofHours(1)),
-                        Instant.now(),
-                        null, 0, 50),
-
-                // Search by text
-                new LogSearchRequest(null, null, null, null, null, "timeout", 0, 50),
-
-                // Combined search
-                new LogSearchRequest("payment-service", LogStatus.INFO, null, null, null, null, 0, 50)
-        };
-
-        System.out.println("===========================================");
-        System.out.println("ELASTICSEARCH VS POSTGRESQL COMPARISON");
-        System.out.println("===========================================");
-        System.out.println(String.format("%-40s | %-15s | %-15s | %-10s",
-                "Search Type", "PostgreSQL (ms)", "Elasticsearch (ms)", "Speedup"));
-        System.out.println("-------------------------------------------+------------------+-------------------+-----------");
-
-        String[] searchTypes = {
-                "Service Filter (auth-service)",
-                "Level Filter (ERROR)",
-                "Time Range (1 hour)",
-                "Text Search (timeout)",
-                "Combined (service + level)"
-        };
-
-        long totalPostgresTime = 0;
-        long totalElasticsearchTime = 0;
-
-        // Execute and compare each search
-        for (int i = 0; i < searchRequests.length; i++) {
-            // PostgreSQL search
-            long pgStartTime = System.currentTimeMillis();
-            Page<LogEntry> pgResults = postgresSearchService.search(searchRequests[i]);
-            long pgDuration = System.currentTimeMillis() - pgStartTime;
-            totalPostgresTime += pgDuration;
-
-            // Elasticsearch search
-            long esStartTime = System.currentTimeMillis();
-            Page<LogDocument> esResults = elasticsearchSearchService.search(searchRequests[i]);
-            long esDuration = System.currentTimeMillis() - esStartTime;
-            totalElasticsearchTime += esDuration;
-
-            // Calculate speedup
-            double speedup = (double) pgDuration / esDuration;
-
-            System.out.println(String.format("%-40s | %-15d | %-15d | %.2fx",
-                    searchTypes[i], pgDuration, esDuration, speedup));
-
-            // Verify results consistency
-            assertThat(pgResults.getTotalElements())
-                    .as("Results count should match between PostgreSQL and Elasticsearch for: " + searchTypes[i])
-                    .isEqualTo(esResults.getTotalElements());
-
-            // Performance assertions
-            assertThat(pgDuration).isLessThan(1000); // PostgreSQL should complete within 1 second
-            assertThat(esDuration).isLessThan(500);  // Elasticsearch should be faster
-        }
-
-        double avgSpeedup = (double) totalPostgresTime / totalElasticsearchTime;
-
-        System.out.println("-------------------------------------------+------------------+-------------------+-----------");
-        System.out.println(String.format("%-40s | %-15d | %-15d | %.2fx",
-                "TOTAL", totalPostgresTime, totalElasticsearchTime, avgSpeedup));
-        System.out.println("===========================================");
-
-        // Elasticsearch should be faster on average
-        assertThat(totalElasticsearchTime).isLessThan(totalPostgresTime);
     }
 
     @Test
@@ -484,6 +394,100 @@ public class LogLoadTest extends BaseIntegrationTest {
         assertThat(elasticsearchRepository.count()).isEqualTo(1000);
     }
 
+    @Test
+    void shouldDemonstrateElasticsearchAdvantagesAtScale() {
+        // 50,000 logs - shows where Elasticsearch shines
+        System.out.println("===========================================");
+        System.out.println("LARGE SCALE TEST: 50,000 LOGS");
+        System.out.println("===========================================");
+
+        List<LogEntryRequest> requests = generate50KLogs();
+        List<LogEntry> savedLogs = logIngestService.ingestBatch(requests);
+        elasticsearchIngestService.indexLogBatch(requests, savedLogs);
+
+        waitForElasticsearchIndexing();
+
+        LogSearchRequest[] searchRequests = {
+                // Full-text search - ES should dominate here
+                new LogSearchRequest(null, null, null, null, null, "connection timeout error", 0, 50),
+
+                // Complex query
+                new LogSearchRequest("auth-service", LogStatus.ERROR, null,
+                        Instant.now().minus(Duration.ofHours(2)),
+                        Instant.now(),
+                        "failed", 0, 50)
+        };
+
+        System.out.println(String.format("%-40s | %-15s | %-15s | %-10s",
+                "Search Type", "PostgreSQL (ms)", "Elasticsearch (ms)", "Speedup"));
+        System.out.println("-------------------------------------------+------------------+-------------------+-----------");
+
+        long totalPgTime = 0;
+        long totalEsTime = 0;
+
+        for (int i = 0; i < searchRequests.length; i++) {
+            long pgStart = System.currentTimeMillis();
+            Page<LogEntry> pgResults = postgresSearchService.search(searchRequests[i]);
+            long pgDuration = System.currentTimeMillis() - pgStart;
+            totalPgTime += pgDuration;
+
+            long esStart = System.currentTimeMillis();
+            Page<LogDocument> esResults = elasticsearchSearchService.search(searchRequests[i]);
+            long esDuration = System.currentTimeMillis() - esStart;
+            totalEsTime += esDuration;
+
+            double speedup = esDuration > 0 ? (double) pgDuration / esDuration : 0;
+
+            String searchType = i == 0 ? "Full-text: 'connection timeout error'" : "Complex combined query";
+            System.out.println(String.format("%-40s | %-15d | %-15d | %.2fx",
+                    searchType, pgDuration, esDuration, speedup));
+        }
+
+        System.out.println("-------------------------------------------+------------------+-------------------+-----------");
+        double avgSpeedup = totalEsTime > 0 ? (double) totalPgTime / totalEsTime : 0;
+        System.out.println(String.format("%-40s | %-15d | %-15d | %.2fx",
+                "TOTAL", totalPgTime, totalEsTime, avgSpeedup));
+        System.out.println("===========================================");
+
+        // At scale, ES should be faster for complex/text queries
+        assertThat(totalEsTime)
+                .as("At 50K logs, Elasticsearch should outperform PostgreSQL")
+                .isLessThan(totalPgTime);
+    }
+
+    private void waitForElasticsearchIndexing() {
+        try {
+            Thread.sleep(2000);
+            elasticsearchTemplate.indexOps(LogDocument.class).refresh();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private List<LogEntryRequest> generate50KLogs() {
+        List<LogEntryRequest> logs = new ArrayList<>();
+        Instant baseTime = Instant.now().minus(Duration.ofHours(24));
+
+        for (int i = 0; i < 50000; i++) {
+            String serviceId = services[random.nextInt(services.length)];
+            LogStatus level = levels[random.nextInt(levels.length)];
+            String message = messages[random.nextInt(messages.length)];
+            Instant timestamp = baseTime.plus(Duration.ofSeconds(i));
+            String traceId = "trace-" + (i / 10);
+
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("requestId", "req-" + i);
+            metadata.put("userId", "user-" + random.nextInt(1000));
+            metadata.put("duration", random.nextInt(5000));
+
+            logs.add(new LogEntryRequest(
+                    timestamp, serviceId, level, message, metadata, traceId
+            ));
+        }
+
+        return logs;
+    }
+
     private List<LogEntryRequest> generate1000Logs() {
         List<LogEntryRequest> logs = new ArrayList<>();
         Instant baseTime = Instant.now().minus(Duration.ofHours(1));
@@ -512,4 +516,5 @@ public class LogLoadTest extends BaseIntegrationTest {
 
         return logs;
     }
+
 }

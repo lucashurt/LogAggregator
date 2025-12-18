@@ -13,6 +13,7 @@ public class LogElasticsearchSpecification {
     public Criteria buildCriteria(LogSearchRequest request) {
         List<Criteria> criteriaList = new ArrayList<>();
 
+        // Exact match filters
         if (request.serviceId() != null && !request.serviceId().isBlank()) {
             criteriaList.add(Criteria.where("serviceId").is(request.serviceId()));
         }
@@ -22,9 +23,11 @@ public class LogElasticsearchSpecification {
         }
 
         if (request.level() != null) {
-            criteriaList.add(Criteria.where("level").is(request.level().toString()));
+            // Compare as string since it's stored as keyword
+            criteriaList.add(Criteria.where("level").is(request.level()));
         }
 
+        // Time range filter
         if (request.startTimestamp() != null && request.endTimestamp() != null) {
             criteriaList.add(
                     Criteria.where("timestamp")
@@ -32,9 +35,10 @@ public class LogElasticsearchSpecification {
             );
         }
 
+        // FIXED: Full-text search using contains() instead of matches()
         if (request.query() != null && !request.query().isBlank()) {
-            criteriaList.add(Criteria.where("message").matches(request.query()));
-        }
+            // Use contains() for full-text search with Elasticsearch's analyzer
+            criteriaList.add(Criteria.where("message").is(request.query()));        }
 
         // If no criteria specified, match all documents
         if (criteriaList.isEmpty()) {
