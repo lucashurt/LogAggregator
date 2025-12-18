@@ -81,18 +81,16 @@ Load Balancer → Auto-scaled APIs -> Kafka Cluster -> Kubernetes HPA Consumers 
 |:---|:---|:---:|:---:|:---:|:---|
 | **Full-Text** | "connection timeout error" | 279ms | **47ms** | **~6x** | 🚀 Elasticsearch |
 | **Complex** | Service + Time Range | 34ms | 67ms | 0.5x | 🐘 PostgreSQL |
-| **Fuzzy** | Typos ("tmeout") | ❌ 0 results | ✅ Found results | N/A | 🚀 Elasticsearch |
 
-> **Insight:** As data volume grows linearly, PostgreSQL search time degrades linearly. Elasticsearch search time remains near-constant due to the Inverted Index architecture.
-
-### ⚡ Log Ingestion at Scale
-| Metric | Value |
-|------|------|
-| API Response Time | ~6ms (async) |
-| Elasticsearch Write Speed | **~4,000 logs/sec** |
-| PostgreSQL Write Speed | ~2,100 logs/sec |
-| Queueing Throughput | 200,000 logs/sec |
-| P95 Response Time | < 100ms |
+### ⚡ System Throughput
+| Metric | Value | Notes |
+|------|------|-------|
+| **End-to-End Throughput** | **~2,000 logs/sec** | Dual-write to PostgreSQL + Elasticsearch |
+| API Response Time (Async) | ~6ms | HTTP 202 Accepted |
+| Elasticsearch Indexing | **3,984 logs/sec** | Bulk operations (10k chunks) |
+| PostgreSQL Inserts | 2,165 logs/sec | Batch inserts (500/tx) |
+| Kafka Queueing Capacity | 15,000+ logs/sec | Theoretical producer throughput |
+| Concurrent Search Performance | 63ms avg | 10 concurrent queries |
 
 ---
 
