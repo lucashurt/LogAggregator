@@ -65,27 +65,25 @@ PostgreSQL (Reliability)       Elasticsearch (Speed)
 
 ---
 
-## ⚡ Performance Metrics (Latest Benchmark)
+## ⚡ Performance Metrics (Final Benchmark)
 
-### 🏆 Search Performance: High-Concurrency Stress Test
-*Benchmark: 100 Concurrent Users searching 500,000 logs*
+### 🏆 Search Performance: 500,000 Log Dataset
+*Benchmark: 100 Concurrent Users & 500k Records*
 
 | Search Type | PostgreSQL Latency | Elasticsearch Latency | Speedup | Winner |
 |:---|:---:|:---:|:---:|:---|
-| **Concurrent Heavy Load** | 10,356ms (10s) ⚠️ | **39ms** | **263x** | 🚀 Elasticsearch |
-| **Complex Query** (Text + Filter) | 299ms | **20ms** | **15x** | 🚀 Elasticsearch |
-| **Exact Match** | 384ms | **18ms** | **21x** | 🚀 Elasticsearch |
-| **Full-Text Search** | 596ms | **288ms** | **2.07x** | 🚀 Elasticsearch |
+| **Full-Text Search** | 358ms | **14ms** | **25.6x** | 🚀 Elasticsearch |
+| **Concurrent Load** | 12,994ms (13s) 🔴 | **562ms** | **23.1x** | 🚀 Elasticsearch |
+| **Exact Match** | 140ms | **8ms** | **17.5x** | 🚀 Elasticsearch |
+| **Complex Query** | 105ms | **9ms** | **11.7x** | 🚀 Elasticsearch |
+| **Aggregations** | 174ms | **58ms** | **3.0x** | 🚀 Elasticsearch |
 
-> **Note:** Under concurrent load, PostgreSQL exhausted its connection pool, resulting in 10-second wait times. Elasticsearch handled the same load with sub-50ms response times, proving the necessity of the hybrid architecture.
-
-### ⚡ System Throughput
+### ⚡ System Capacity
 | Metric | Value | Notes |
 |------|------|-------|
-| **Ingestion Throughput** | **12,686 logs/sec** | ~1 Billion logs/day capacity |
-| PostgreSQL Write Speed | 2,979 logs/sec | Bottleneck (Acid Compliance) |
-| Batch Write Time (500k logs) | 39.4 seconds | Full end-to-end processing |
-| API Response Time | ~6ms | Non-blocking (Kafka ACK) |
+| **Ingestion Rate** | **9,557 logs/sec** | ~825 Million logs/day theoretical max |
+| **Write Speedup** | **3.85x** | Compared to direct DB writes |
+| **Resilience** | **High** | Survived load that crashed the primary DB |
 
 ---
 
