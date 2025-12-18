@@ -5,6 +5,7 @@ import com.example.logaggregator.elasticsearch.LogElasticsearchRepository;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.example.logaggregator.logs.models.LogEntry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -17,9 +18,13 @@ import java.util.stream.Collectors;
 @Service
 public class LogElasticsearchIngestService {
     private final LogElasticsearchRepository logElasticsearchRepository;
+    private final ElasticsearchOperations elasticsearchOperations;
 
-    public LogElasticsearchIngestService(LogElasticsearchRepository logElasticsearchRepository) {
+    public LogElasticsearchIngestService(
+            LogElasticsearchRepository logElasticsearchRepository,
+            ElasticsearchOperations elasticsearchOperations) {
         this.logElasticsearchRepository = logElasticsearchRepository;
+        this.elasticsearchOperations = elasticsearchOperations;
     }
 
     public void indexLog(LogEntryRequest logEntryRequest, long postgresId) {
@@ -36,39 +41,39 @@ public class LogElasticsearchIngestService {
     }
 
     public void indexLogBatch(List<LogEntryRequest> requests, List<LogEntry> savedLogs) {
-       try {
+        try {
+            Map<String, Long> postgresIdMaps = savedLogs.stream()
+                    .collect(Collectors.toMap(
+                            log -> log.getServiceId() + ":" + log.getTimestamp().toString(),
+                            LogEntry::getId,
+                            (existing, replacement) -> existing
+                    ));
 
-           Map<String, Long> postgresIdMaps = savedLogs.stream()
-                   .collect(Collectors.toMap(
-                           log -> log.getServiceId() + ":" + log.getTimestamp().toString(),
-                           LogEntry::getId,
-                           (existing, replacement) -> existing
-                   ));
+            List<LogDocument> documents = requests.stream()
+                    .map(req -> {
+                        String key = req.serviceId() + ":" + req.timestamp().toString();
+                        Long postgresId = postgresIdMaps.get(key);
 
-           List<LogDocument> documents = requests.stream()
-                   .map(req -> {
-                       String key = req.serviceId() + ":" + req.timestamp().toString();
-                       Long postgresId = postgresIdMaps.get(key);
+                        if (postgresId == null) {
+                            log.warn("No PostgreSQL ID found for log: serviceId={}, timestamp={}",
+                                    req.serviceId(), req.timestamp());
+                        }
 
-                       if (postgresId == null) {
-                           log.warn("No PostgreSQL ID found for log: serviceId={}, timestamp={}",
-                                   req.serviceId(), req.timestamp());
-                       }
+                        return convertToLogDocument(req, postgresId);
+                    })
+                    .toList();
 
-                       return convertToLogDocument(req, postgresId);
-                   })
-                   .collect(Collectors.toList());
+            // Use saveAll for batch operations - Spring Data handles bulk behind the scenes
+            logElasticsearchRepository.saveAll(documents);
 
-           logElasticsearchRepository.saveAll(documents);
-           log.info("Batch indexed {} logs to Elasticsearch", documents.size());
-       }
-       catch (Exception e){
-           log.error("Failed to batch index logs to Elasticsearch: count={}, error={}",
-                   requests.size(), e.getMessage());
-       }
+            log.info("Batch indexed {} logs to Elasticsearch", documents.size());
+        }
+        catch (Exception e){
+            log.error("Failed to batch index logs to Elasticsearch: count={}, error={}",
+                    requests.size(), e.getMessage());
+        }
     }
 
-    //HELPER FUNCTION
     private LogDocument convertToLogDocument(LogEntryRequest request, Long postgresId) {
         LogDocument logDocument = new LogDocument();
         logDocument.setId(UUID.randomUUID().toString());
@@ -79,8 +84,7 @@ public class LogElasticsearchIngestService {
         logDocument.setMetadata(request.metadata());
         logDocument.setTraceId(request.traceId());
         logDocument.setCreatedAt(Instant.now());
-        logDocument.setPostgresId(postgresId); // Link to PostgreSQL record
+        logDocument.setPostgresId(postgresId);
         return logDocument;
-
     }
 }
