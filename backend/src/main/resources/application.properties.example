@@ -52,8 +52,18 @@ info.app.name=Log Aggregator
 info.app.version=1.0.0
 info.app.description=Enterprise Log Aggregation System with Kafka
 
-
-#ELASTISEARCH SETTINGS
+#ELASTICSEARCH SETTINGS (OPTIMIZED)
 spring.elasticsearch.uris=http://localhost:9200
 spring.elasticsearch.connection-timeout=5s
 spring.elasticsearch.socket-timeout=60s
+
+# Elasticsearch Client Configuration (for Spring Boot 4.0+)
+spring.elasticsearch.restclient.sniffer.interval=60s
+spring.elasticsearch.restclient.sniffer.delay-after-failure=30s
+
+# Disable automatic index creation (we'll use @Document annotations)
+spring.data.elasticsearch.repositories.enabled=true
+
+# Connection Pool Settings
+spring.elasticsearch.http.max-connections=100
+spring.elasticsearch.http.max-connections-per-route=50
