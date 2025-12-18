@@ -85,7 +85,7 @@ Load Balancer → Auto-scaled APIs -> Kafka Cluster -> Kubernetes HPA Consumers 
 
 > **Insight:** As data volume grows linearly, PostgreSQL search time degrades linearly. Elasticsearch search time remains near-constant due to the Inverted Index architecture.
 
-### ⚡ System Throughput
+### ⚡ Log Ingestion at Scale
 | Metric | Value |
 |------|------|
 | API Response Time | ~6ms (async) |
