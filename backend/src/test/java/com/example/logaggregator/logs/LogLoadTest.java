@@ -186,7 +186,9 @@ public class LogLoadTest extends BaseIntegrationTest {
         };
 
         for (int i = 0; i < scenarios.length; i++) {
-            // Warmup (optional, skipped for raw comparison)
+            // Warmup
+            postgresSearchService.search(scenarios[i]);
+            elasticsearchSearchService.search(scenarios[i]);
 
             long pgStart = System.currentTimeMillis();
             Page<LogEntry> pgRes = postgresSearchService.search(scenarios[i]);
@@ -239,42 +241,45 @@ public class LogLoadTest extends BaseIntegrationTest {
         System.out.println("\n[PHASE 4] CONCURRENT LOAD TEST (" + CONCURRENT_USERS + " Threads)");
         System.out.println("----------------------------------------------------------------------------------");
 
-        ExecutorService executor = Executors.newFixedThreadPool(CONCURRENT_USERS);
+        LogSearchRequest heavyRequest = new LogSearchRequest(
+                null, null, null, null, null, "connection", 0, 50
+        );
+
+        // Test Postgres in isolation
+        ExecutorService pgExecutor = Executors.newFixedThreadPool(CONCURRENT_USERS);
         AtomicLong pgTotalTime = new AtomicLong(0);
-        AtomicLong esTotalTime = new AtomicLong(0);
-        AtomicLong successCount = new AtomicLong(0);
-
-        LogSearchRequest heavyRequest = new LogSearchRequest(null, null, null, null, null, "connection", 0, 50);
-
-        long start = System.currentTimeMillis();
 
         for(int i=0; i<CONCURRENT_USERS; i++) {
-            executor.submit(() -> {
-                // Postgres Search
+            pgExecutor.submit(() -> {
                 long t1 = System.currentTimeMillis();
                 postgresSearchService.search(heavyRequest);
                 pgTotalTime.addAndGet(System.currentTimeMillis() - t1);
+            });
+        }
+        pgExecutor.shutdown();
+        pgExecutor.awaitTermination(1, TimeUnit.MINUTES);
 
-                // Elastic Search
+        // Test Elasticsearch in isolation
+        ExecutorService esExecutor = Executors.newFixedThreadPool(CONCURRENT_USERS);
+        AtomicLong esTotalTime = new AtomicLong(0);
+
+        for(int i=0; i<CONCURRENT_USERS; i++) {
+            esExecutor.submit(() -> {
                 long t2 = System.currentTimeMillis();
                 elasticsearchSearchService.search(heavyRequest);
                 esTotalTime.addAndGet(System.currentTimeMillis() - t2);
-
-                successCount.incrementAndGet();
             });
         }
-
-        executor.shutdown();
-        executor.awaitTermination(1, TimeUnit.MINUTES);
-        long wallTime = System.currentTimeMillis() - start;
+        esExecutor.shutdown();
+        esExecutor.awaitTermination(1, TimeUnit.MINUTES);
 
         double pgAvg = pgTotalTime.get() / (double) CONCURRENT_USERS;
         double esAvg = esTotalTime.get() / (double) CONCURRENT_USERS;
 
-        printMetricRow("Avg Latency under Load", String.format("%.0f ms", pgAvg), String.format("%.0f ms", esAvg),
+        printMetricRow("Avg Latency under Load",
+                String.format("%.0f ms", pgAvg),
+                String.format("%.0f ms", esAvg),
                 String.format("%.2fx", pgAvg/esAvg));
-
-        System.out.println(String.format("Total Wall Time for %d reqs: %d ms", CONCURRENT_USERS, wallTime));
     }
 
     // --- Helpers ---
