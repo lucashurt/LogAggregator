@@ -1,4 +1,4 @@
-package com.example.logaggregator.exception;
+package com.example.logaggregator;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;

@@ -7,13 +7,16 @@ spring.datasource.password=
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.show-sql=false
 
+#KAFKA SERVER CONFIGURATION
 spring.kafka.bootstrap-servers=localhost:9092
 
+#HIBERNATE BATCH SETTINGS
 spring.jpa.properties.hibernate.jdbc.batch_size=500
 spring.jpa.properties.hibernate.order_inserts=true
 spring.jpa.properties.hibernate.order_updates=true
 spring.jpa.properties.hibernate.jdbc.batch_versioned_data=true
 
+#KAFKA PRODUCER SETTINGS
 spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer
 spring.kafka.producer.value-serializer=org.springframework.kafka.support.serializer.JsonSerializer
 spring.kafka.producer.batch-size=16384
@@ -22,6 +25,7 @@ spring.kafka.producer.compression-type=snappy
 spring.kafka.producer.acks=1
 spring.kafka.producer.buffer-memory=33554432
 
+#KAFKA CONSUMER SETTINGS
 spring.kafka.consumer.group-id=log-processor-group
 spring.kafka.consumer.auto-offset-reset=earliest
 spring.kafka.consumer.key-deserializer=org.apache.kafka.common.serialization.StringDeserializer
@@ -32,6 +36,7 @@ spring.kafka.consumer.fetch-min-size=1024
 spring.kafka.consumer.fetch-max-wait-ms=500
 spring.kafka.consumer.enable-auto-commit=false
 
+#KAFKA BATCH SETTINGS
 spring.kafka.listener.concurrency=3
 spring.kafka.listener.type=batch
 spring.kafka.listener.ack-mode=batch
@@ -39,9 +44,16 @@ spring.kafka.listener.ack-mode=batch
 logging.level.com.example.logaggregator.kafka=INFO
 logging.level.org.apache.kafka=WARN
 
+#KAFKA HEALTH MONITORING SETTINGS
 management.endpoints.web.exposure.include=health,info,prometheus,metrics
 management.endpoint.health.show-details=always
 management.prometheus.metrics.export.enabled=true
 info.app.name=Log Aggregator
 info.app.version=1.0.0
 info.app.description=Enterprise Log Aggregation System with Kafka
+
+
+#ELASTISEARCH SETTINGS
+spring.elasticsearch.uris=http://localhost:9200
+spring.elasticsearch.connection-timeout=5s
+spring.elasticsearch.socket-timeout=60s

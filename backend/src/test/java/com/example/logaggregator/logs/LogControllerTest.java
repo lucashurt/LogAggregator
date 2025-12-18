@@ -1,8 +1,8 @@
 package com.example.logaggregator.logs;
 
+import com.example.logaggregator.elasticsearch.services.LogElasticsearchSearchService;
 import com.example.logaggregator.kafka.ConsumersAndProducers.LogProducer;
-import com.example.logaggregator.logs.services.LogSearchService;
-import io.micrometer.core.instrument.MeterRegistry;
+import com.example.logaggregator.logs.services.LogPostgresSearchService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -27,7 +27,10 @@ public class LogControllerTest {
     private LogProducer logProducer;
 
     @MockitoBean
-    private LogSearchService logSearchService;
+    private LogPostgresSearchService logPostgresSearchService;
+
+    @MockitoBean
+    private LogElasticsearchSearchService  logElasticsearchSearchService;
 
     @Test
     void shouldIngestValidLog() throws Exception {
