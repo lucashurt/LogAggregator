@@ -35,10 +35,10 @@ public class LogElasticsearchSpecification {
             );
         }
 
-        // FIXED: Full-text search using contains() instead of matches()
         if (request.query() != null && !request.query().isBlank()) {
-            // Use contains() for full-text search with Elasticsearch's analyzer
-            criteriaList.add(Criteria.where("message").is(request.query()));        }
+            // .matches() ensures the query is analyzed (e.g. "Timeout" -> "timeout")
+            criteriaList.add(Criteria.where("message").matches(request.query()));
+        }
 
         // If no criteria specified, match all documents
         if (criteriaList.isEmpty()) {
