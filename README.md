@@ -67,22 +67,25 @@ PostgreSQL (Reliability)       Elasticsearch (Speed)
 
 ## ⚡ Performance Metrics (Latest Benchmark)
 
-### 🏆 Search Performance: Concurrent Load Test
-*Benchmark: 75 Concurrent Users searching 250,000 logs*
+### 🏆 Search Performance: High-Concurrency Stress Test
+*Benchmark: 100 Concurrent Users searching 500,000 logs*
 
 | Search Type | PostgreSQL Latency | Elasticsearch Latency | Speedup | Winner |
 |:---|:---:|:---:|:---:|:---|
-| **Concurrent Heavy Load** | 3,698ms | **29ms** | **127x** | 🚀 Elasticsearch |
-| **Full-Text Search** | 209ms | **143ms** | **1.46x** | 🚀 Elasticsearch |
-| **Complex Query** | 47ms | **14ms** | **3.36x** | 🚀 Elasticsearch |
+| **Concurrent Heavy Load** | 10,356ms (10s) ⚠️ | **39ms** | **263x** | 🚀 Elasticsearch |
+| **Complex Query** (Text + Filter) | 299ms | **20ms** | **15x** | 🚀 Elasticsearch |
+| **Exact Match** | 384ms | **18ms** | **21x** | 🚀 Elasticsearch |
+| **Full-Text Search** | 596ms | **288ms** | **2.07x** | 🚀 Elasticsearch |
+
+> **Note:** Under concurrent load, PostgreSQL exhausted its connection pool, resulting in 10-second wait times. Elasticsearch handled the same load with sub-50ms response times, proving the necessity of the hybrid architecture.
 
 ### ⚡ System Throughput
 | Metric | Value | Notes |
 |------|------|-------|
-| **Ingestion Throughput** | **12,229 logs/sec** | Async dual-write enabled |
-| PostgreSQL Write Speed | 3,271 logs/sec | Blocking (Critical Path) |
-| Batch Write Time (250k logs) | 20.4 seconds | Full end-to-end processing |
-| API Response Time | ~6ms | HTTP 202 Accepted |
+| **Ingestion Throughput** | **12,686 logs/sec** | ~1 Billion logs/day capacity |
+| PostgreSQL Write Speed | 2,979 logs/sec | Bottleneck (Acid Compliance) |
+| Batch Write Time (500k logs) | 39.4 seconds | Full end-to-end processing |
+| API Response Time | ~6ms | Non-blocking (Kafka ACK) |
 
 ---
 
