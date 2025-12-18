@@ -11,13 +11,18 @@ import com.example.logaggregator.logs.models.LogEntry;
 import com.example.logaggregator.logs.models.LogStatus;
 import com.example.logaggregator.logs.services.LogIngestService;
 import com.example.logaggregator.logs.services.LogPostgresSearchService;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+import org.springframework.data.elasticsearch.core.query.StringQuery;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.data.elasticsearch.client.elc.NativeQuery;
+import co.elastic.clients.elasticsearch._types.aggregations.Aggregation;
+import co.elastic.clients.elasticsearch._types.aggregations.TermsAggregation;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -54,6 +59,9 @@ public class LogLoadTest extends BaseIntegrationTest {
     @Autowired
     private LogElasticsearchRepository elasticsearchRepository;
 
+    @Autowired
+    private EntityManager entityManager;
+
     private final Random random = new Random();
     private final String[] services = {"auth-service", "payment-service", "notification-service", "user-service", "inventory-service", "shipping-service"};
     private final LogStatus[] levels = {LogStatus.INFO, LogStatus.DEBUG, LogStatus.WARNING, LogStatus.ERROR};
@@ -71,8 +79,8 @@ public class LogLoadTest extends BaseIntegrationTest {
     };
 
     // CONFIGURATION
-    private static final int TOTAL_LOGS = 250_000;
-    private static final int CONCURRENT_USERS = 75;
+    private static final int TOTAL_LOGS = 500_000;
+    private static final int CONCURRENT_USERS = 100;
 
     @BeforeEach
     void cleanup() {
@@ -111,7 +119,7 @@ public class LogLoadTest extends BaseIntegrationTest {
     }
 
     private List<LogEntry> benchmarkIngestion(List<LogEntryRequest> requests) throws InterruptedException {
-        System.out.println("\n[PHASE 1] INGESTION PERFORMANCE");
+        System.out.println("\n[PHASE 1] INGESTION PERFORMANCE (Fixed Fairness)");
         System.out.println("----------------------------------------------------------------------------------");
 
         // PostgreSQL Ingestion
@@ -138,11 +146,12 @@ public class LogLoadTest extends BaseIntegrationTest {
                     allSavedLogs.subList(pgStartIdx, Math.min(allSavedLogs.size(), pgStartIdx + (end - i)))
             );
         }
+
+        // CRITICAL FIX: Refresh MUST happen inside the timer to measure "Time to Searchability"
+        elasticsearchTemplate.indexOps(LogDocument.class).refresh();
+
         long esEnd = System.currentTimeMillis();
         long esDuration = esEnd - esStart;
-
-        // Wait for ES Refresh
-        elasticsearchTemplate.indexOps(LogDocument.class).refresh();
 
         printMetricRow("Batch Write Time", pgDuration + " ms", esDuration + " ms",
                 String.format("%.2fx", (double)pgDuration/esDuration > 1 ? (double)pgDuration/esDuration : -((double)esDuration/pgDuration)));
@@ -196,29 +205,36 @@ public class LogLoadTest extends BaseIntegrationTest {
     }
 
     private void benchmarkAggregation() {
-        System.out.println("\n[PHASE 3] ANALYTIC AGGREGATIONS (Count by Service)");
+        System.out.println("\n[PHASE 3] ANALYTIC AGGREGATIONS (Native Group By)");
         System.out.println("----------------------------------------------------------------------------------");
 
-        // Postgres Aggregation (Count)
+        // Postgres Aggregation: Use JPQL to run a real "GROUP BY"
         long pgStart = System.currentTimeMillis();
-        // Since we don't have a specific agg method, we use count on a filtered query per service
-        for(String service : services) {
-            postgresSearchService.search(new LogSearchRequest(service, null, null, null, null, null, 0, 1));
-        }
-        long pgDur = System.currentTimeMillis() - pgStart;
+        List<Object[]> pgResults = entityManager.createQuery(
+                        "SELECT l.serviceId, COUNT(l) FROM LogEntry l GROUP BY l.serviceId", Object[].class)
+                .getResultList();
+        long pgEnd = System.currentTimeMillis();
+        long pgDur = pgEnd - pgStart;
 
-        // Elasticsearch Aggregation
+        // Elasticsearch Aggregation: Use Native Query Builder (Corrected)
         long esStart = System.currentTimeMillis();
-        // Similarly simulating aggregation via search hits count which ES optimizes
-        for(String service : services) {
-            elasticsearchSearchService.search(new LogSearchRequest(service, null, null, null, null, null, 0, 1));
-        }
-        long esDur = System.currentTimeMillis() - esStart;
 
-        printMetricRow("Iterative Count (" + services.length + " groups)", pgDur + " ms", esDur + " ms",
+        // This builds the exact JSON structure: { "size": 0, "aggs": { ... } }
+        NativeQuery aggQuery = NativeQuery.builder()
+                .withQuery(q -> q.matchAll(m -> m))
+                .withMaxResults(0) // Equivalent to "size": 0
+                .withAggregation("service_counts", Aggregation.of(a -> a
+                        .terms(TermsAggregation.of(t -> t.field("serviceId")))
+                ))
+                .build();
+
+        elasticsearchTemplate.search(aggQuery, LogDocument.class);
+        long esEnd = System.currentTimeMillis();
+        long esDur = esEnd - esStart;
+
+        printMetricRow("Group By (6 groups)", pgDur + " ms", esDur + " ms",
                 String.format("%.2fx", (double)pgDur/esDur));
     }
-
     private void benchmarkConcurrentLoad() throws InterruptedException {
         System.out.println("\n[PHASE 4] CONCURRENT LOAD TEST (" + CONCURRENT_USERS + " Threads)");
         System.out.println("----------------------------------------------------------------------------------");
