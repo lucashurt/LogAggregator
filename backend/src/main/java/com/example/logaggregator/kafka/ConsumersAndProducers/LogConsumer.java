@@ -13,6 +13,7 @@ import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture; // Import this
 
 @Slf4j
 @Service
@@ -37,26 +38,39 @@ public class LogConsumer {
             @Header(KafkaHeaders.OFFSET) List<Long> offsets) {
         long startTime = System.nanoTime();
 
-        log.info("Received batch of {} logs from partition(s) {}",
+        log.debug("Received batch of {} logs from partition(s) {}",
                 requests.size(),
                 partitions.stream().distinct().toList());
 
         try{
+            // 1. Critical Path: Write to PostgreSQL (We wait for this ensures data safety)
             List<LogEntry> savedLogs = logIngestService.ingestBatch(requests);
-            logElasticsearchIngestService.indexLogBatch(requests,savedLogs);
 
-            long duration = System.currentTimeMillis() - startTime;
+            // 2. Non-Critical Path: Index to Elasticsearch (Async / Fire-and-Forget)
+            // This unblocks the Kafka consumer immediately.
+            CompletableFuture.runAsync(() -> {
+                try {
+                    logElasticsearchIngestService.indexLogBatch(requests, savedLogs);
+                } catch (Exception e) {
+                    // Log error but don't stop the pipeline
+                    log.error("Async Elasticsearch indexing failed: {}", e.getMessage());
+                }
+            });
+
+            // Metrics
+            long duration = System.currentTimeMillis() - (startTime / 1_000_000); // convert nano to milli
             double throughput = (requests.size() / (duration / 1000.0));
 
             kafkaMetrics.recordBatchConsumed(requests.size());
             kafkaMetrics.recordConsumerBatchProcessingTime(startTime);
 
-            log.info("Batch processing complete: {} succeeded in {}ms ({} logs/sec)",
-                    requests.size(), duration, String.format("%.0f", throughput));
+            log.info("Batch processing complete: {} logs saved to Postgres (ES async) in {}ms",
+                    requests.size(), duration);
         }
         catch (Exception e){
             log.error("Error while processing logs from partition(s) {}: {}", partitions, e.getMessage());
 
+            // If Postgres fails, we send to DLQ
             for(int i=0; i<requests.size(); i++){
                 kafkaErrorHandler.sendToDLQ(
                         requests.get(i),
@@ -68,5 +82,4 @@ public class LogConsumer {
             }
         }
     }
-
 }
