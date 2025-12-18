@@ -1,115 +1,108 @@
 # Enterprise Log Aggregation System
 
-A **production-grade distributed log aggregation system** built to demonstrate enterprise-scale architecture patterns.  
-This system handles **15,000+ logs per second** with async processing, comprehensive monitoring, and resilient failure handling — similar to systems used by **Datadog, Splunk, and Uber**.
+A **production-grade distributed log aggregation system** built to demonstrate enterprise-scale architecture patterns.
+This system handles **high-throughput ingestion** with async processing, comprehensive monitoring, and a **Hybrid Storage Architecture** (PostgreSQL + Elasticsearch) to balance reliability with high-speed search.
 
 ---
 
 ## 🎯 Project Overview
 
-A structured journey from a basic REST API to a fully distributed, production-ready log aggregation platform.  
+A structured journey from a basic REST API to a fully distributed, production-ready log aggregation platform.
 Each phase addresses real scalability, reliability, and observability challenges found in enterprise systems.
 
-**Current Status:**  
-✅ **Weeks 1–4 Complete + Production Monitoring**  
-_Distributed async processing with full observability_
+**Current Status:**
+✅ **Weeks 1–5 Complete: Hybrid Storage & Search Engine**
+_Distributed async processing with full observability and high-performance search_
 
 ---
 
 ## 🏗️ Architecture Evolution
 
-### ✅ Current Architecture (Weeks 1–4 + Monitoring)
+### ✅ Current Architecture (Hybrid Storage)
 
-Clients →  Spring Boot REST API (HTTP 202 Accepted) -> Kafka Topic (logs)   ->  3 Consumer threads ->    PostgreSQL (Batch Insert: 500/transaction)    -> Health Checks + Metrics (Micrometer/Prometheus -> DLQ Topic (logs-dlq)  ->  Failed messages
+Clients →  Spring Boot REST API (HTTP 202 Accepted)
+              ⬇
+         Kafka Topic (logs)
+              ⬇
+      3 Consumer Threads (Batch Processors)
+              ⬇
+    ┌───────────────────────────────┐
+    │                               │
+    ▼                               ▼
+PostgreSQL (Reliability)      Elasticsearch (Speed)
+(Batch Insert: 500/tx)        (Bulk Index: 10k chunks)
+    │                               │
+    └──────────────┬────────────────┘
+                   ▼
+          Health Checks + Metrics
+                   ▼
+          DLQ Topic (logs-dlq) (Failure Handling)
 
 **Key Components**
-- **Non-blocking API:** Returns immediately, queues to Kafka
-- **Message Queue:** Apache Kafka with partitioning by `serviceId`
-- **Batch Consumers:** 3 concurrent threads, 500 messages per poll
-- **Dead Letter Queue:** Automatic retry (3 attempts) with failure isolation
-- **Production Monitoring:** Custom metrics, health indicators, DLQ tracking
+- **Hybrid Storage:** PostgreSQL for ACID compliance/backup; Elasticsearch for high-speed text search.
+- **Message Queue:** Apache Kafka with partitioning by `serviceId`.
+- **Batch Consumers:** Parallel consumption writing to both stores efficiently.
+- **Smart Ingestion:** Implements **Chunking Strategy** (10k records) to prevent HTTP 413 Payload errors during bulk indexing.
+- **Dead Letter Queue:** Automatic retry (3 attempts) with failure isolation.
 
 ---
 
-### 🎯 Target Architecture (Week 12)
+### 🎯 Target Architecture (Final Vision)
 
-Load Balancer → Spring Boot APIs (Auto-scaled)  ->  Kafka Cluster  -> Batch Processors (Kubernetes HPA) -> PostgreSQL Elasticsearch S3 -> Metadata Search Cold Storage -> WebSocket Server → React Dashboard -> Redis Cache
+Load Balancer → Auto-scaled APIs -> Kafka Cluster -> Kubernetes HPA Consumers -> [Postgres + Elasticsearch] -> Redis Cache -> WebSocket Server → React Dashboard
 
 ---
 
-## 🚀 Current Features (Weeks 1–4 + Monitoring)
+## 🚀 Current Features
 
 ### Core Functionality
-- **Asynchronous Log Ingestion:** Non-blocking HTTP API with Kafka queues
-- **High Throughput Processing:** 15,000+ logs/sec with batch operations
-- **Resilient Failure Handling:** DLQ with automatic retry (3 attempts, 1s backoff)
-- **Advanced Search Engine:** Filter by service, level, trace ID, time range, text
-- **Production Monitoring:** Custom business metrics via Prometheus
-- **Health Checks:** Kafka & database connectivity
-- **Batch Optimization:** Hibernate batch inserts (500 records/transaction)
-
----
+- **Asynchronous Log Ingestion:** Non-blocking HTTP API with Kafka queues.
+- **Hybrid Search Engine:**
+    - **Structured Search:** PostgreSQL for exact ID/Time lookups.
+    - **Full-Text Search:** Elasticsearch for message content and fuzzy matching.
+- **High Throughput:** Optimized for 15,000+ logs/sec.
+- **Resilient Failure Handling:** DLQ with automatic retry and error isolation.
+- **Production Monitoring:** Custom business metrics via Prometheus/Grafana.
 
 ### Technical Highlights
-- **Event-Driven Architecture:** Kafka producer/consumer model
-- **Consumer Concurrency:** 3 parallel consumers
-- **Smart Partitioning:** Partitioning by `serviceId`
-- **Batch Processing:** Kafka (`max.poll.records=500`) + DB batching
-- **Error Handling:** Circuit breaker pattern + DLQ
-- **Observability:** 5 custom Micrometer metrics
-- **Testing:** 51 automated tests including load validation
+- **Inverted Indexing:** Switched from SQL `LIKE %...%` scans ($O(N)$) to Elasticsearch Inverted Index ($O(1)$).
+- **Bulk Ingestion:** Custom chunking logic to handle massive payloads (250k+ logs) without memory overflows.
+- **Event-Driven:** Kafka producer/consumer model decoupled from API.
+- **Observability:** Metric tracking for `ingest.latency`, `elasticsearch.indexing.time`, and `consumer.lag`.
 
 ---
 
-## 📊 Production Monitoring Features
+## ⚡ Performance Metrics (Latest Benchmark)
 
-### Custom Metrics
-- `logs.published.total` – Logs accepted by API
-- `logs.consumed.total` – Logs persisted to DB
-- `logs.dlq.total` – Failed logs sent to DLQ
-- `api.logs.ingest.duration` – API latency
-- `consumer.batch.processing.duration` – DB write latency
+### 🏆 Search Performance: PostgreSQL vs. Elasticsearch
+*Benchmark run on 250,000 logs*
 
----
+| Search Type | Query | PostgreSQL Time | Elasticsearch Time | Speedup | Winner |
+|:---|:---|:---:|:---:|:---:|:---|
+| **Full-Text** | "connection timeout error" | 279ms | **47ms** | **~6x** | 🚀 Elasticsearch |
+| **Complex** | Service + Time Range | 34ms | 67ms | 0.5x | 🐘 PostgreSQL |
+| **Fuzzy** | Typos ("tmeout") | ❌ 0 results | ✅ Found results | N/A | 🚀 Elasticsearch |
 
-### Health Indicators
-- Kafka cluster connectivity (5s timeout)
-- Database connection status
-- Consumer lag monitoring
-- DLQ rate tracking (alerts at >1%)
+> **Insight:** As data volume grows linearly, PostgreSQL search time degrades linearly. Elasticsearch search time remains near-constant due to the Inverted Index architecture.
 
----
-
-### Monitoring Endpoints
-- `/actuator/health`
-- `/actuator/prometheus`
-- `/actuator/metrics`
-- `/api/v1/admin/dlq/status`
-- `/api/v1/admin/dlq/metrics`
-
----
-
-## ⚡ Performance Metrics (Load-Tested)
-
+### ⚡ System Throughput
 | Metric | Value |
 |------|------|
 | API Response Time | ~6ms (async) |
-| Processing Throughput | **9,000 logs/sec** |
-| Batch Ingestion | 1,000 logs < 10ms |
-| Consumer Processing | 4,921 logs/sec per consumer |
+| Elasticsearch Write Speed | **~4,000 logs/sec** |
+| PostgreSQL Write Speed | ~2,100 logs/sec |
 | Queueing Throughput | 200,000 logs/sec |
 | P95 Response Time | < 100ms |
-| Metrics Accuracy | > 99% |
-| Improvement vs Sync DB | **6× faster** |
 
 ---
 
 ## 📋 Prerequisites
 - Java 17+
 - PostgreSQL 14+
+- Elasticsearch 8.x or 9.x
 - Apache Kafka 3.0+
 - Maven 3.9+
-- Git
+- Docker (Recommended for Elasticsearch)
 
 ---
 
@@ -117,7 +110,6 @@ Load Balancer → Spring Boot APIs (Auto-scaled)  ->  Kafka Cluster  -> Batch Pr
 ```bash
 git clone <repository-url>
 cd LogAggregator
-```
 
 ### 2️⃣ Database Setup (PostgreSQL)
 Execute the following SQL commands to create the database and user:
@@ -233,7 +225,7 @@ Run the full test suite (Unit, Component, Load, and Integration).
 * ✅ **Phase 1:** Foundation
 * ✅ **Phase 2:** Async Processing
 * ✅ **Phase 3:** Production Monitoring
-* ⏭️ **Phase 4:** Elasticsearch Integration
+* ✅ **Phase 4:** Elasticsearch Integration
 * ⏭️ **Phase 5:** Redis Caching
 * ⏭️ **Phase 6:** Real-Time Streaming
 * ⏭️ **Phase 7:** Cloud Deployment
