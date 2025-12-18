@@ -71,8 +71,8 @@ public class LogLoadTest extends BaseIntegrationTest {
     };
 
     // CONFIGURATION
-    private static final int TOTAL_LOGS = 100_000;
-    private static final int CONCURRENT_USERS = 50;
+    private static final int TOTAL_LOGS = 250_000;
+    private static final int CONCURRENT_USERS = 75;
 
     @BeforeEach
     void cleanup() {
