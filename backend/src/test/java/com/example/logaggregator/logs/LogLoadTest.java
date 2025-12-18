@@ -1,5 +1,6 @@
 package com.example.logaggregator.logs;
 
+import com.example.logaggregator.BaseIntegrationTest;
 import com.example.logaggregator.elasticsearch.LogDocument;
 import com.example.logaggregator.elasticsearch.LogElasticsearchRepository;
 import com.example.logaggregator.elasticsearch.services.LogElasticsearchIngestService;
@@ -31,8 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @ActiveProfiles("test")
-@Import(TestcontainersConfiguration.class)
-public class LogLoadTest {
+public class LogLoadTest extends BaseIntegrationTest {
 
     @Autowired
     private LogIngestService logIngestService;
