@@ -67,3 +67,29 @@ spring.data.elasticsearch.repositories.enabled=true
 # Connection Pool Settings
 spring.elasticsearch.http.max-connections=100
 spring.elasticsearch.http.max-connections-per-route=50
+
+# Redis Connection
+spring.data.redis.host=localhost
+spring.data.redis.port=6379
+spring.data.redis.password=
+spring.data.redis.database=0
+
+# Connection Pool (Lettuce)
+spring.data.redis.lettuce.pool.max-active=20
+spring.data.redis.lettuce.pool.max-idle=10
+spring.data.redis.lettuce.pool.min-idle=5
+spring.data.redis.lettuce.pool.max-wait=2000ms
+
+# Timeouts
+spring.data.redis.timeout=3000ms
+spring.data.redis.connect-timeout=5000ms
+
+# Cache Configuration
+spring.cache.type=redis
+spring.cache.redis.time-to-live=300000  # 5 minutes in milliseconds
+spring.cache.redis.cache-null-values=false
+spring.cache.redis.use-key-prefix=true
+spring.cache.redis.key-prefix=log-agg:
+
+# Serialization
+spring.data.redis.serializer=json

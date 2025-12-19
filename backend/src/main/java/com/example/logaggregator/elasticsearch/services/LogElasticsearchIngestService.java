@@ -5,7 +5,6 @@ import com.example.logaggregator.elasticsearch.LogElasticsearchRepository;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.example.logaggregator.logs.models.LogEntry;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -18,13 +17,10 @@ import java.util.stream.Collectors;
 @Service
 public class LogElasticsearchIngestService {
     private final LogElasticsearchRepository logElasticsearchRepository;
-    private final ElasticsearchOperations elasticsearchOperations;
 
     public LogElasticsearchIngestService(
-            LogElasticsearchRepository logElasticsearchRepository,
-            ElasticsearchOperations elasticsearchOperations) {
+            LogElasticsearchRepository logElasticsearchRepository) {
         this.logElasticsearchRepository = logElasticsearchRepository;
-        this.elasticsearchOperations = elasticsearchOperations;
     }
 
     public void indexLog(LogEntryRequest logEntryRequest, long postgresId) {
