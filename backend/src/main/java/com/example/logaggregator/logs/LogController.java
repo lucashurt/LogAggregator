@@ -1,6 +1,7 @@
 package com.example.logaggregator.logs;
 
 import com.example.logaggregator.elasticsearch.LogDocument;
+import com.example.logaggregator.elasticsearch.services.CachedElasticsearchService;
 import com.example.logaggregator.elasticsearch.services.LogElasticsearchSearchService;
 import com.example.logaggregator.kafka.ConsumersAndProducers.LogProducer;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
@@ -26,15 +27,15 @@ import java.util.Map;
 public class LogController {
 
     private final LogProducer logProducer;
-    private final LogElasticsearchSearchService elasticsearchSearchService;
+    private final CachedElasticsearchService cachedElasticsearchService;
     private final LogPostgresSearchService postgresSearchService; // Keep as fallback
 
     public LogController(
             LogProducer logProducer,
-            LogElasticsearchSearchService elasticsearchSearchService,
+            CachedElasticsearchService cachedElasticsearchService,
             LogPostgresSearchService postgresSearchService) {
         this.logProducer = logProducer;
-        this.elasticsearchSearchService = elasticsearchSearchService;
+        this.cachedElasticsearchService = cachedElasticsearchService;
         this.postgresSearchService = postgresSearchService;
     }
 
@@ -72,22 +73,8 @@ public class LogController {
 
         try {
             // Use Elasticsearch for search
-            Page<LogDocument> elasticsearchResults = elasticsearchSearchService.search(request);
-
-            List<LogEntryResponse> responses = elasticsearchResults.getContent()
-                    .stream()
-                    .map(this::documentToResponse)
-                    .toList();
-
-            LogSearchResponse response = new LogSearchResponse(
-                    responses,
-                    elasticsearchResults.getTotalElements(),
-                    elasticsearchResults.getTotalPages(),
-                    elasticsearchResults.getNumber(),
-                    elasticsearchResults.getSize()
-            );
-
-            log.info("Search completed via Elasticsearch: found {} results", responses.size());
+            LogSearchResponse response = cachedElasticsearchService.searchWithCache(request);
+            log.info("Search completed via Elasticsearch: found {} results", response.totalElements());
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
@@ -112,19 +99,6 @@ public class LogController {
 
             return ResponseEntity.ok(response);
         }
-    }
-
-    private LogEntryResponse documentToResponse(LogDocument document) {
-        return new LogEntryResponse(
-                document.getPostgresId(),
-                document.getTimestamp(),
-                document.getServiceId(),
-                document.getLevel(),
-                document.getMessage(),
-                document.getTraceId(),
-                document.getMetadata(),
-                document.getCreatedAt()
-        );
     }
 
     private LogEntryResponse toResponse(com.example.logaggregator.logs.models.LogEntry logEntry) {
