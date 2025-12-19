@@ -1,6 +1,7 @@
-package com.example.logaggregator.elasticsearch.services;
+package com.example.logaggregator.redis;
 
 import com.example.logaggregator.elasticsearch.LogDocument;
+import com.example.logaggregator.elasticsearch.services.LogElasticsearchSearchService;
 import com.example.logaggregator.logs.DTOs.LogEntryResponse;
 import com.example.logaggregator.logs.DTOs.LogSearchRequest;
 import com.example.logaggregator.logs.DTOs.LogSearchResponse;
