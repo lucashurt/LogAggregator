@@ -1,8 +1,6 @@
 package com.example.logaggregator.logs;
 
-import com.example.logaggregator.elasticsearch.LogDocument;
 import com.example.logaggregator.elasticsearch.services.CachedElasticsearchService;
-import com.example.logaggregator.elasticsearch.services.LogElasticsearchSearchService;
 import com.example.logaggregator.kafka.ConsumersAndProducers.LogProducer;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.example.logaggregator.logs.DTOs.LogEntryResponse;
