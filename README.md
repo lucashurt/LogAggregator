@@ -1,6 +1,6 @@
 # Enterprise Log Aggregation System
 
-A **distributed log aggregation system** built to demonstrate enterprise-scale architecture patterns.This system handles **high-throughput ingestion (10k+ logs/sec)** with async processing cacheing, and elasticsearch to optimize processes.
+A **distributed log aggregation system** built to demonstrate enterprise-scale architecture patterns. **(10k+ logs/sec)** 
 ---
 
 ## 🎯 Project Overview
