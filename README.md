@@ -19,35 +19,40 @@ _Distributed async processing with Elasticsearch indexing and **Redis Caching** 
 
 ```text
                                 [ CLIENTS ]
-                                     │
-                                     │ (HTTP/JSON)
-                                     ▼
-+-----------------------------------------------------------------------+
-|                       SPRING BOOT APPLICATION                         |
-|                                                                       |
-|   1. WRITE PATH (Async)               2. READ PATH (Cached)           |
-|                                                                       |
-|   [ Ingestion API ]                   [ Search API ]                  |
-|           │                                   │                       |
-|           ▼                                   ▼                       |
-|    [ Kafka Producer ]                 [ Caching Service ]             |
-|           │                             │           │                 |
-|           │ (Async Push)        (Hit)   │           │ (Miss)          |
-|           ▼                             ▼           ▼                 |
-|      (Kafka Topic)                  [ Redis ]   [ Elasticsearch ]     |
-+-----------│-----------------------------------------------------------+
-            │
-            │ (Batch Consume)
-            ▼
-   [ BATCH CONSUMER WORKERS ]
-            │
-            ├──(1)──▶ [ Elasticsearch ] (Bulk Indexing / Search Engine)
-            │
-            └──(2)──▶ [ PostgreSQL ]    (Bulk Insert / System of Record)
-            │
-       (On Failure)
-            ▼
-      [ Kafka DLQ ] ────▶ [ Retry Service ]
+                                  │
+                    ┌─────────────┴─────────────┐
+                    │                           │
+              POST /logs                   GET /search
+              POST /batch                       │
+                    │                           │
+                    │      SPRING BOOT          │
+                    │                           │
+  ┌─────────────────▼─────────┐    ┌────────────▼──────────────┐
+  │   WRITE PATH (Async)      │    │   READ PATH (Cached)      │
+  │                           │    │                           │
+  │  LogController            │    │  LogController            │
+  │        ▼                  │    │        ▼                  │
+  │  LogProducer              │    │  CachedElasticsearch      │
+  │        ▼                  │    │        ▼                  │
+  │  Kafka Topic "logs"       │    │  ┌─────────────┐          │
+  │  (3 partitions)           │    │  │    Redis    │          │
+  │        ▼                  │    │  │   (Cache)   │          │
+  │  LogConsumer (x3)         │    │  └──┬──────┬───┘          │
+  │        ▼                  │    │     │      │              │
+  │  ┌──────┴──────┐          │    │   HIT    MISS             │
+  │  │             │          │    │     │      │              │
+  │  ▼             ▼          │    │     │      ▼              │
+  │PostgreSQL  Elasticsearch  │    │     │  Elasticsearch      │
+  │(sync)      (async)        │    │     │  (fallback:Postgres)|
+  │  │                        │    │     │      │              │
+  │  │ On Failure             │    │     └──────┴──────┐       │
+  │  ▼                        │    │                   ▼       │
+  │Kafka DLQ                  │    │          LogSearchResponse│
+  └───────────────────────────┘    └───────────────────────────┘
+
+  Monitoring: Prometheus, Grafana, Custom Metrics
+
+  [ PostgreSQL ]  [ Elasticsearch ]  [ Redis ]  [ Kafka ]
 ```
 
 **Key Components**
