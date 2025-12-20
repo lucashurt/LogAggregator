@@ -1,12 +1,12 @@
 package com.example.logaggregator.config;
 
-
-import tools.jackson.databind.DefaultTyping;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.cfg.DateTimeFeature;
-import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
-import tools.jackson.databind.jsontype.PolymorphicTypeValidator;
+// 1. USE STANDARD JACKSON 2 IMPORTS
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
+import com.fasterxml.jackson.databind.jsontype.PolymorphicTypeValidator;
+import com.fasterxml.jackson.annotation.JsonTypeInfo; // standard annotation package
 
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
@@ -16,7 +16,7 @@ import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
@@ -28,16 +28,20 @@ public class RedisConfig {
 
     @Bean
     public ObjectMapper redisObjectMapper() {
+        // Build validator to allow flexible typing
         PolymorphicTypeValidator typeValidator = BasicPolymorphicTypeValidator.builder()
                 .allowIfBaseType(Object.class)
                 .build();
 
         return JsonMapper.builder()
-                .configure(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS, false)
-                // CHANGE HERE: Use DefaultTyping.NON_FINAL instead of ObjectMapper.DefaultTyping.NON_FINAL
-                .activateDefaultTyping(typeValidator, DefaultTyping.NON_FINAL)
+                // 2. USE SerializationFeature (Jackson 2 standard)
+                .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
+                // 3. ENABLE "EVERYTHING" TYPING
+                // This tells Jackson to add type info for Records and final classes automatically.
+                .activateDefaultTyping(typeValidator, ObjectMapper.DefaultTyping.EVERYTHING)
                 .build();
     }
+
     @Bean
     public RedisTemplate<String, Object> redisTemplate(
             RedisConnectionFactory redisConnectionFactory,
@@ -47,8 +51,8 @@ public class RedisConfig {
         redisTemplate.setConnectionFactory(redisConnectionFactory);
 
         StringRedisSerializer stringRedisSerializer = new StringRedisSerializer();
-        GenericJacksonJsonRedisSerializer jsonSerializer =
-                new GenericJacksonJsonRedisSerializer(redisObjectMapper);
+        GenericJackson2JsonRedisSerializer jsonSerializer =
+                new GenericJackson2JsonRedisSerializer(redisObjectMapper);
 
         redisTemplate.setKeySerializer(stringRedisSerializer);
         redisTemplate.setValueSerializer(jsonSerializer);
@@ -64,8 +68,8 @@ public class RedisConfig {
             RedisConnectionFactory redisConnectionFactory,
             ObjectMapper redisObjectMapper) {
 
-        GenericJacksonJsonRedisSerializer jsonSerializer =
-                new GenericJacksonJsonRedisSerializer(redisObjectMapper);
+        GenericJackson2JsonRedisSerializer jsonSerializer =
+                new GenericJackson2JsonRedisSerializer(redisObjectMapper);
 
         RedisCacheConfiguration redisCacheConfiguration = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofMinutes(5))
