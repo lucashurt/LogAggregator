@@ -238,4 +238,4 @@ This project demonstrates core concepts in backend engineering:
 * **Benchmarking:** How to properly stress-test a system to find bottlenecks (e.g., Connection Pool limits vs Non-blocking IO).
 * **Polyglot Persistence:** Using SQL for truth and NoSQL for search.
 
-**Built with:** `Spring Boot 3.4.1` · `Apache Kafka` · `PostgreSQL` · `Micrometer` · `Prometheus` · `Prometheus`
+**Built with:** `Spring Boot 3.4.1` · `Apache Kafka` · `PostgreSQL` · `Micrometer` · `Prometheus` · `Redis`
