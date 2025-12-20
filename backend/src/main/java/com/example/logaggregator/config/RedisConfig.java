@@ -1,9 +1,12 @@
 package com.example.logaggregator.config;
 
-// 1. IMPORTANT: All Jackson imports must start with 'tools.jackson'
+
+import tools.jackson.databind.DefaultTyping;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.cfg.DateTimeFeature;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
+import tools.jackson.databind.jsontype.PolymorphicTypeValidator;
 
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
@@ -25,38 +28,51 @@ public class RedisConfig {
 
     @Bean
     public ObjectMapper redisObjectMapper() {
-        // 2. Use JsonMapper.builder() for Jackson 3
-        // 3. Use .configure(Feature, boolean) to be safe against API variations
+        PolymorphicTypeValidator typeValidator = BasicPolymorphicTypeValidator.builder()
+                .allowIfBaseType(Object.class)
+                .build();
+
         return JsonMapper.builder()
                 .configure(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS, false)
+                // CHANGE HERE: Use DefaultTyping.NON_FINAL instead of ObjectMapper.DefaultTyping.NON_FINAL
+                .activateDefaultTyping(typeValidator, DefaultTyping.NON_FINAL)
                 .build();
     }
-
     @Bean
-    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory redisConnectionFactory, ObjectMapper objectMapper) {
+    public RedisTemplate<String, Object> redisTemplate(
+            RedisConnectionFactory redisConnectionFactory,
+            ObjectMapper redisObjectMapper) {
+
         RedisTemplate<String, Object> redisTemplate = new RedisTemplate<>();
         redisTemplate.setConnectionFactory(redisConnectionFactory);
 
         StringRedisSerializer stringRedisSerializer = new StringRedisSerializer();
-        // 4. This new serializer accepts the Jackson 3 ObjectMapper
-        GenericJacksonJsonRedisSerializer jsonSerializer = new GenericJacksonJsonRedisSerializer(objectMapper);
+        GenericJacksonJsonRedisSerializer jsonSerializer =
+                new GenericJacksonJsonRedisSerializer(redisObjectMapper);
 
         redisTemplate.setKeySerializer(stringRedisSerializer);
         redisTemplate.setValueSerializer(jsonSerializer);
         redisTemplate.setHashKeySerializer(stringRedisSerializer);
         redisTemplate.setHashValueSerializer(jsonSerializer);
         redisTemplate.afterPropertiesSet();
+
         return redisTemplate;
     }
 
     @Bean
-    public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory, ObjectMapper objectMapper) {
-        GenericJacksonJsonRedisSerializer jsonSerializer = new GenericJacksonJsonRedisSerializer(objectMapper);
+    public CacheManager cacheManager(
+            RedisConnectionFactory redisConnectionFactory,
+            ObjectMapper redisObjectMapper) {
+
+        GenericJacksonJsonRedisSerializer jsonSerializer =
+                new GenericJacksonJsonRedisSerializer(redisObjectMapper);
 
         RedisCacheConfiguration redisCacheConfiguration = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofMinutes(5))
                 .serializeKeysWith(
-                        RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer())
+                        RedisSerializationContext.SerializationPair.fromSerializer(
+                                new StringRedisSerializer()
+                        )
                 )
                 .serializeValuesWith(
                         RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer)
