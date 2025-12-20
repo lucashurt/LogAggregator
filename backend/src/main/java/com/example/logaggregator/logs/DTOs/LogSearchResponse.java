@@ -12,9 +12,4 @@ public record LogSearchResponse(
           @JsonProperty("totalPages") int totalPages,
           @JsonProperty("currentPage") int currentPage,
           @JsonProperty("size") int size) implements Serializable {
-
-            @JsonCreator
-            public LogSearchResponse{}
-
-
 }
