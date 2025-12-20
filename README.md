@@ -18,25 +18,36 @@ _Distributed async processing with Elasticsearch indexing and **Redis Caching** 
 ### ✅ Current Architecture (Async Hybrid Storage)
 
 ```text
-[Clients]
-    │
-    ▼
-[Spring Boot REST API] ──(Read-Through)──▶ [Redis Cache]
-    │
-    │ (Async Write)
-    ▼
-[Kafka Topic: logs]
-    │
-    ▼
-[Batch Consumer Threads]
-    │
-    ├─▶ [PostgreSQL DB] (System of Record / Backup)
-    │
-    └─▶ [Elasticsearch] (Full-Text Search Engine)
+                                [ CLIENTS ]
+                                     │
+                                     │ (HTTP/JSON)
+                                     ▼
++-----------------------------------------------------------------------+
+|                       SPRING BOOT APPLICATION                         |
+|                                                                       |
+|   1. WRITE PATH (Async)               2. READ PATH (Cached)           |
+|                                                                       |
+|   [ Ingestion API ]                   [ Search API ]                  |
+|           │                                   │                       |
+|           ▼                                   ▼                       |
+|    [ Kafka Producer ]                 [ Caching Service ]             |
+|           │                             │           │                 |
+|           │ (Async Push)        (Hit)   │           │ (Miss)          |
+|           ▼                             ▼           ▼                 |
+|      (Kafka Topic)                  [ Redis ]   [ Elasticsearch ]     |
++-----------│-----------------------------------------------------------+
             │
-    (On Failure)
+            │ (Batch Consume)
             ▼
-     [Kafka DLQ] ──▶ [Retry Service]
+   [ BATCH CONSUMER WORKERS ]
+            │
+            ├──(1)──▶ [ Elasticsearch ] (Bulk Indexing / Search Engine)
+            │
+            └──(2)──▶ [ PostgreSQL ]    (Bulk Insert / System of Record)
+            │
+       (On Failure)
+            ▼
+      [ Kafka DLQ ] ────▶ [ Retry Service ]
 ```
 
 **Key Components**
