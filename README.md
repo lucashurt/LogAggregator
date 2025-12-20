@@ -1,8 +1,6 @@
 # Enterprise Log Aggregation System
 
-A **production-grade distributed log aggregation system** built to demonstrate enterprise-scale architecture patterns.
-This system handles **high-throughput ingestion (12k+ logs/sec)** with async processing, comprehensive monitoring, and a **Hybrid Storage Architecture** (PostgreSQL + Elasticsearch) to balance reliability with sub-millisecond search at scale.
-
+A **distributed log aggregation system** built to demonstrate enterprise-scale architecture patterns.This system handles **high-throughput ingestion (10k+ logs/sec)** with async processing cacheing, and elasticsearch to optimize processes.
 ---
 
 ## 🎯 Project Overview
@@ -11,35 +9,39 @@ A structured journey from a basic REST API to a fully distributed, production-re
 Each phase addresses real scalability, reliability, and observability challenges found in enterprise systems.
 
 **Current Status:**
-✅ **Weeks 1–5 Complete: Extreme Scale & Optimization**
-_Distributed async processing with optimized Elasticsearch indexing and non-blocking consumers._
-
+✅ **Weeks 1–6 Complete: Caching & Extreme Optimization**
+_Distributed async processing with Elasticsearch indexing and **Redis Caching** for sub-5ms read latencies._
 ---
 
 ## 🏗️ Architecture Evolution
 
 ### ✅ Current Architecture (Async Hybrid Storage)
 
-Clients →  Spring Boot REST API (HTTP 202 Accepted)
-              ⬇
-          Kafka Topic (logs)
-              ⬇
-      3 Consumer Threads (Batch Processors)
-              ⬇
-    ┌───────────────────────────────┐
-    │                               │
-    ▼                               ▼
-PostgreSQL (Reliability)       Elasticsearch (Speed)
-(Synchronous Write)            (Async Fire-and-Forget)
-    │                               │
-    └──────────────┬────────────────┘
-                   ▼
-          Health Checks + Metrics
-                   ▼
-          DLQ Topic (logs-dlq) (Failure Handling)
+```text
+[Clients]
+    │
+    ▼
+[Spring Boot REST API] ──(Read-Through)──▶ [Redis Cache]
+    │
+    │ (Async Write)
+    ▼
+[Kafka Topic: logs]
+    │
+    ▼
+[Batch Consumer Threads]
+    │
+    ├─▶ [PostgreSQL DB] (System of Record / Backup)
+    │
+    └─▶ [Elasticsearch] (Full-Text Search Engine)
+            │
+    (On Failure)
+            ▼
+     [Kafka DLQ] ──▶ [Retry Service]
+```
 
 **Key Components**
 - **Hybrid Storage:** PostgreSQL for ACID compliance/backup; Elasticsearch for high-speed text search.
+- **Caching Layer:** Redis stores frequent search queries, reducing latency from ~60ms to 4ms (P99 < 20ms).
 - **Async Ingestion:** `CompletableFuture` implementation decouples Elasticsearch indexing from the critical path, allowing the consumer to process **12,000+ logs/sec**.
 - **Optimized Indexing:** Custom `refresh_interval` (30s) and replica settings to minimize I/O overhead during bulk loads.
 - **Message Queue:** Apache Kafka with partitioning by `serviceId`.
@@ -50,7 +52,7 @@ PostgreSQL (Reliability)       Elasticsearch (Speed)
 ## 🚀 Current Features
 
 ### Core Functionality
-- **High-Performance Ingestion:** Optimized for **12,000+ logs/sec** on single-node hardware.
+- **High-Performance Ingestion:** Optimized for **10,000+ logs/sec** on single-node hardware.
 - **Hybrid Search Engine:**
     - **Structured Search:** PostgreSQL for exact ID/Time lookups.
     - **Full-Text Search:** Elasticsearch for message content, fuzzy matching, and complex aggregations.
@@ -61,7 +63,7 @@ PostgreSQL (Reliability)       Elasticsearch (Speed)
 - **Async "Fire-and-Forget":** Non-blocking Elasticsearch writes ensure Postgres latency doesn't bottleneck throughput.
 - **Inverted Indexing:** Switched from SQL `LIKE %...%` scans ($O(N)$) to Elasticsearch Inverted Index ($O(1)$).
 - **Batch Processing:** Kafka batch listeners and Spring Data `saveAll` for efficient network usage.
-- **Observability:** Metric tracking for `ingest.latency`, `elasticsearch.indexing.time`, and `consumer.lag`.
+- **Observability:** Metric tracking for `ingest.latency`, `cache.hit_rate`, and `consumer.lag`.
 
 ---
 
@@ -72,17 +74,17 @@ PostgreSQL (Reliability)       Elasticsearch (Speed)
 
 | Search Type | PostgreSQL Latency | Elasticsearch Latency | Speedup | Winner |
 |:---|:---:|:---:|:---:|:---|
-| **Full-Text Search** | 358ms | **14ms** | **25.6x** | 🚀 Elasticsearch |
-| **Concurrent Load** | 12,994ms (13s) 🔴 | **562ms** | **23.1x** | 🚀 Elasticsearch |
-| **Exact Match** | 140ms | **8ms** | **17.5x** | 🚀 Elasticsearch |
-| **Complex Query** | 105ms | **9ms** | **11.7x** | 🚀 Elasticsearch |
-| **Aggregations** | 174ms | **58ms** | **3.0x** | 🚀 Elasticsearch |
+| **Full-Text Search** | 278ms | **14ms** | **19.8x** | 🚀 Elasticsearch |
+| **Concurrent Load** | 6,974ms (13s) 🔴 | **277ms** | **25.1x** | 🚀 Elasticsearch |
+| **Exact Match** | 66ms | **11ms** | **6.0x** | 🚀 Elasticsearch |
+| **Complex Query** | 75ms | **12ms** | **6.25x** | 🚀 Elasticsearch |
+| **Aggregations** | 195ms | **79ms** | **2.5x** | 🚀 Elasticsearch |
 
 ### ⚡ System Capacity
 | Metric | Value | Notes |
 |------|------|-------|
-| **Ingestion Rate** | **9,557 logs/sec** | ~825 Million logs/day theoretical max |
-| **Write Speedup** | **3.85x** | Compared to direct DB writes |
+| **Ingestion Rate** | **10,800 logs/sec** | ~930 Million logs/day theoretical max |
+| **Write Speedup** | **3.42x** | Compared to direct DB writes |
 | **Resilience** | **High** | Survived load that crashed the primary DB |
 
 ---
@@ -90,7 +92,8 @@ PostgreSQL (Reliability)       Elasticsearch (Speed)
 ## 📋 Prerequisites
 - Java 17+ (Running on Java 24 in dev)
 - PostgreSQL 14+
-- Elasticsearch 8.x or 9.x
+- Elasticsearch 8.x+
+- Redis 7.x
 - Apache Kafka 3.0+
 - Maven 3.9+
 - Docker (Recommended for infrastructure)
@@ -185,9 +188,7 @@ cd backend
 
 ### Search Logs (Hybrid High-Availability)
 * **Endpoint:** `GET /api/v1/logs/search`
-* **Architecture:**
-    * **Primary:** All queries hit **Elasticsearch** first for maximum performance.
-    * **Fallback:** If Elasticsearch is unreachable, the system automatically degrades gracefully and routes queries to **PostgreSQL** to ensure data accessibility.
+* **Behavior:** Checks Redis -> Hits Elasticsearch -> Updates Redis.
 * **Params:** `query` (text), `serviceId`, `level`, `startTime`, `endTime`.---
 
 ## 🧪 Running Tests
@@ -201,7 +202,7 @@ Run the full test suite (Unit, Component, Load, and Integration).
 **Current Test Coverage (67 Tests):
 * **Unit Tests:** 45
 * **Component Tests:** 10
-* **Load Tests:** 5
+* **Load Tests:** 6 (Includes Redis & Elastic Load Benchmarks)
 * **Integration Tests:** 7
 
 ---
@@ -212,7 +213,7 @@ Run the full test suite (Unit, Component, Load, and Integration).
 * ✅ **Phase 2:** Async Processing
 * ✅ **Phase 3:** Production Monitoring
 * ✅ **Phase 4:** Elasticsearch Integration
-* ⏭️ **Phase 5:** Redis Caching
+* ✅ **Phase 5:** Redis Caching
 * ⏭️ **Phase 6:** Real-Time Streaming
 * ⏭️ **Phase 7:** Cloud Deployment
 
@@ -232,9 +233,9 @@ Run the full test suite (Unit, Component, Load, and Integration).
 
 This project demonstrates core concepts in backend engineering:
 * **Async Systems:** Decoupling write paths to maximize throughput.
-* **Database Tuning:** Understanding refresh_interval, connection pooling, and batch sizes.
+* **Caching Strategy:** Implementing Look-Aside caching to protect expensive search engines.
 * **Reliability:** Implementing DLQs and fallback strategies.
 * **Benchmarking:** How to properly stress-test a system to find bottlenecks (e.g., Connection Pool limits vs Non-blocking IO).
 * **Polyglot Persistence:** Using SQL for truth and NoSQL for search.
 
-**Built with:** `Spring Boot 4.0` · `Apache Kafka` · `PostgreSQL` · `Micrometer` · `Prometheus`
+**Built with:** `Spring Boot 3.4.1` · `Apache Kafka` · `PostgreSQL` · `Micrometer` · `Prometheus` · `Redis`

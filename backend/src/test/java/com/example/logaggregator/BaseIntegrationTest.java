@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -23,6 +24,7 @@ public abstract class BaseIntegrationTest {
     private static final PostgreSQLContainer<?> postgresContainer;
     private static final ElasticsearchContainer elasticsearchContainer;
     private static final KafkaContainer kafkaContainer;
+    private static final GenericContainer<?> redisContainer;
 
     static {
         // PostgreSQL container
@@ -54,10 +56,15 @@ public abstract class BaseIntegrationTest {
         )
                 .withReuse(true);
 
+        // Redis
+        redisContainer = new GenericContainer<>(DockerImageName.parse("redis:7.2-alpine"))
+                .withExposedPorts(6379)
+                .withReuse(true);
         // Start all containers
         postgresContainer.start();
         elasticsearchContainer.start();
         kafkaContainer.start();
+        redisContainer.start();
     }
 
     @DynamicPropertySource
@@ -75,5 +82,9 @@ public abstract class BaseIntegrationTest {
 
         // Kafka
         registry.add("spring.kafka.bootstrap-servers", kafkaContainer::getBootstrapServers);
+
+        //Redis
+        registry.add("spring.data.redis.host", redisContainer::getHost);
+        registry.add("spring.data.redis.port", () -> redisContainer.getMappedPort(6379));
     }
 }

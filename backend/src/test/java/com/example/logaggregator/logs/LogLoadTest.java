@@ -13,6 +13,7 @@ import com.example.logaggregator.logs.services.LogIngestService;
 import com.example.logaggregator.logs.services.LogPostgresSearchService;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -35,6 +36,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
+@Tag("load-test")
 @ActiveProfiles("test")
 public class LogLoadTest extends BaseIntegrationTest {
 
