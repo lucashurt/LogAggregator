@@ -28,20 +28,17 @@ public class RedisConfig {
 
     @Bean
     public ObjectMapper redisObjectMapper() {
-        // Build validator to allow flexible typing
         PolymorphicTypeValidator typeValidator = BasicPolymorphicTypeValidator.builder()
                 .allowIfBaseType(Object.class)
                 .build();
 
         return JsonMapper.builder()
-                // 2. USE SerializationFeature (Jackson 2 standard)
+                // FIX: Register JavaTimeModule (and others) automatically
+                .findAndAddModules()
                 .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
-                // 3. ENABLE "EVERYTHING" TYPING
-                // This tells Jackson to add type info for Records and final classes automatically.
                 .activateDefaultTyping(typeValidator, ObjectMapper.DefaultTyping.EVERYTHING)
                 .build();
     }
-
     @Bean
     public RedisTemplate<String, Object> redisTemplate(
             RedisConnectionFactory redisConnectionFactory,
