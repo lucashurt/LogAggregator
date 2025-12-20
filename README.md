@@ -235,16 +235,6 @@ Run the full test suite (Unit, Component, Load, and Integration).
 
 ---
 
-## 🐛 Known Limitations
-
-* **Scalability:** PostgreSQL scalability limits (Phase 4 will address this).
-* **Performance:** No caching layer implemented yet.
-* **Streaming:** No real-time streaming capabilities.
-* **Deployment:** No cloud deployment configurations.
-* **Security:** No authentication or multi-tenancy support.
-
----
-
 ## 🎓 Learning Outcomes
 
 This project demonstrates core concepts in backend engineering:
