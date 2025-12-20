@@ -160,8 +160,9 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.4</version>
                 <configuration>
-                    <!-- Exclude load tests from regular runs -->
+                    <!-- Exclude load tests from regular runs
                     <excludedGroups>load-test</excludedGroups>
+                    -->
 
                     <!-- Force Docker API version 1.44 for Docker 29+ -->
                     <systemPropertyVariables>
