@@ -2,29 +2,25 @@ version: '3.8'
 
 services:
   # ----------------------------
-  # Backend Service
+  # Backend
   # ----------------------------
   backend:
-    build: ./backend             # <--- POINTS TO THE BACKEND FOLDER
+    build: ./backend
     container_name: log-backend
     ports:
       - "8080:8080"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/log_aggregator
-      - SPRING_DATASOURCE_USERNAME=log_user
-      - SPRING_DATASOURCE_PASSWORD=your_password
+      # Use variables from .env
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${POSTGRES_DB}
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
+
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - SPRING_ELASTICSEARCH_URIS=http://elasticsearch:9200
       - SPRING_DATA_REDIS_HOST=redis
       - SPRING_DATA_REDIS_PORT=6379
     depends_on:
       postgres:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     networks:
       - log-network
@@ -36,24 +32,24 @@ services:
     image: postgres:15-alpine
     container_name: log-postgres
     environment:
-      POSTGRES_DB: log_aggregator
-      POSTGRES_USER: log_user
-      POSTGRES_PASSWORD: your_password
+      # Postgres image reads these to initialize the DB
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - log-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U log_user -d log_aggregator"]
+      # Healthcheck uses the variables too so it doesn't break if you change the user
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ----------------------------
-  # Elasticsearch
-  # ----------------------------
+  # ... (Keep Elasticsearch, Redis, Kafka, Zookeeper as they were) ...
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
     container_name: log-elasticsearch
@@ -73,9 +69,6 @@ services:
       timeout: 10s
       retries: 5
 
-  # ----------------------------
-  # Redis
-  # ----------------------------
   redis:
     image: redis:7.2-alpine
     container_name: log-redis
@@ -89,9 +82,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ----------------------------
-  # Kafka & Zookeeper
-  # ----------------------------
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: log-zookeeper
@@ -122,16 +112,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-
-  # ----------------------------
-  # Future Frontend (Placeholder)
-  # ----------------------------
-  # frontend:
-  #   build: ./frontend
-  #   ports:
-  #     - "3000:3000"
-  #   depends_on:
-  #     - backend
 
 volumes:
   postgres_data:
