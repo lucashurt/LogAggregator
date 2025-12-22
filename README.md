@@ -90,11 +90,12 @@ _Distributed async processing with Elasticsearch indexing and **Redis Caching** 
 
 | Search Type | PostgreSQL Latency | Elasticsearch Latency | Speedup | Winner |
 |:---|:---:|:---:|:---:|:---|
-| **Full-Text Search** | 278ms | **14ms** | **19.8x** | 🚀 Elasticsearch |
-| **Concurrent Load** | 6,974ms (13s) 🔴 | **277ms** | **25.1x** | 🚀 Elasticsearch |
-| **Exact Match** | 66ms | **11ms** | **6.0x** | 🚀 Elasticsearch |
-| **Complex Query** | 75ms | **12ms** | **6.25x** | 🚀 Elasticsearch |
-| **Aggregations** | 195ms | **79ms** | **2.5x** | 🚀 Elasticsearch |
+| **Full-Text Search** | 399 | **18ms** | **22.2x** | 🚀 Elasticsearch |
+| **Concurrent Load** | 8,112ms (8s) 🔴 | **336ms** | **24.2x** | 🚀 Elasticsearch |
+| **Exact Match** | 232ms | **21ms** | **11.1x** | 🚀 Elasticsearch |
+| **Complex Query** | 206ms | **17ms** | **12.1x** | 🚀 Elasticsearch |
+| **Range Query** | 262ms | **35ms** | **7.5x** | 🚀 Elasticsearch |
+| **Aggregations** | 436ms | **112ms** | **3.9x** | 🚀 Elasticsearch |
 
 ### ⚡ System Capacity
 | Metric | Value | Notes |
