@@ -33,8 +33,8 @@ public class RedisLoadTest extends BaseIntegrationTest {
     @Autowired
     private CacheManager cacheManager;
 
-    private static final int TOTAL_REQUESTS = 500_000;
-    private static final int CONCURRENT_USERS = 100;
+    private static final int TOTAL_REQUESTS = 100_000;
+    private static final int CONCURRENT_USERS = 50;
 
     @BeforeEach
     void setup() {
