@@ -103,6 +103,15 @@ _Distributed async processing with Elasticsearch indexing and **Redis Caching** 
 | **Write Speedup** | **3.42x** | Compared to direct DB writes |
 | **Resilience** | **High** | Survived load that crashed the primary DB |
 
+### Caching performance
+
+| Metric | Uncached (Elasticsearch Direct) | Cached (Redis Hit) | Speedup Factor |
+| :--- | :---: | :---: | :---: |
+| **Average Latency** | 63.85 ms | **4.15 ms** | **15.4x 🚀** |
+| **P50 (Median)** | ~45.00 ms | **3.04 ms** | **14.8x** |
+| **P95 (Tail)** | ~98.00 ms | **10.24 ms** | **9.5x** |
+| **P99 (Worst Case)** | ~120.00 ms | **17.19 ms** | **7.0x** |
+
 ---
 
 ## 📋 Prerequisites
