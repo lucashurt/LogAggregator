@@ -6,6 +6,7 @@ import com.example.logaggregator.kafka.KafkaMetrics;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.example.logaggregator.logs.models.LogEntry;
 import com.example.logaggregator.logs.services.LogIngestService;
+import com.example.logaggregator.logs.services.WebsocketService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.KafkaHeaders;
@@ -23,12 +24,14 @@ public class LogConsumer {
     private final LogIngestService logIngestService;
     private final KafkaErrorHandler kafkaErrorHandler;
     private final KafkaMetrics kafkaMetrics;
+    private final WebsocketService  websocketService;
 
-    public LogConsumer(LogIngestService logIngestService, KafkaErrorHandler kafkaErrorHandler,KafkaMetrics kafkaMetrics, LogElasticsearchIngestService logElasticsearchIngestService) {
+    public LogConsumer(LogIngestService logIngestService, KafkaErrorHandler kafkaErrorHandler,KafkaMetrics kafkaMetrics, LogElasticsearchIngestService logElasticsearchIngestService, WebsocketService websocketService) {
         this.logElasticsearchIngestService = logElasticsearchIngestService;
         this.logIngestService = logIngestService;
         this.kafkaErrorHandler = kafkaErrorHandler;
         this.kafkaMetrics = kafkaMetrics;
+        this.websocketService = websocketService;
     }
 
     @KafkaListener(topics = "logs", groupId = "log-processor-group")
@@ -60,6 +63,10 @@ public class LogConsumer {
             // Metrics
             long duration = System.currentTimeMillis() - (startTime / 1_000_000); // convert nano to milli
             double throughput = (requests.size() / (duration / 1000.0));
+
+            CompletableFuture.runAsync(() -> {
+                savedLogs.forEach(websocketService :: broadcastLog);
+            });
 
             kafkaMetrics.recordBatchConsumed(requests.size());
             kafkaMetrics.recordConsumerBatchProcessingTime(startTime);
