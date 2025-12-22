@@ -116,89 +116,31 @@ _Distributed async processing with Elasticsearch indexing and **Redis Caching** 
 
 ## 📋 Prerequisites
 - Java 17+ (Running on Java 24 in dev)
-- PostgreSQL 14+
-- Elasticsearch 8.x+
-- Redis 7.x
-- Apache Kafka 3.0+
 - Maven 3.9+
-- Docker (Recommended for infrastructure)
-
+- Docker (Required for infrastructure)
 ---
+
+## 🛠️ Setup & Installation
+
+The entire project infrastructure is containerized. You do not need to install Postgres, Kafka, or Redis manually.
 
 ### 1️⃣ Clone Repository
 ```bash
 git clone <repository-url>
 cd LogAggregator
-
-### 2️⃣ Database Setup (PostgreSQL)
-Execute the following SQL commands to create the database and user:
-```sql
-CREATE DATABASE log_aggregator;
-CREATE USER log_user WITH PASSWORD 'your_password';
-GRANT ALL PRIVILEGES ON DATABASE log_aggregator TO log_user;
+cp .env-example .env
 ```
 
-### 3️⃣ Kafka Setup
-You can run Kafka locally. **Docker Compose support is coming soon.**
+### 2️⃣ Start Infrastructure (Docker)
+This command builds the backend application and starts all services (Postgres, Kafka, Zookeeper, Elasticsearch, Redis).
 
-**Option A: Local Kafka**
 ```bash
-# Start Zookeeper
-bin/zookeeper-server-start.sh config/zookeeper.properties
-
-# Start Kafka
-bin/kafka-server-start.sh config/server.properties
-
-# Create 'logs' topic (3 partitions for concurrency)
-bin/kafka-topics.sh --create \
-  --topic logs \
-  --bootstrap-server localhost:9092 \
-  --partitions 3 \
-  --replication-factor 1
-
-# Create 'logs-dlq' topic (Dead Letter Queue)
-bin/kafka-topics.sh --create \
-  --topic logs-dlq \
-  --bootstrap-server localhost:9092 \
-  --partitions 1 \
-  --replication-factor 1
+docker-compose up --build
 ```
 
-### 4️⃣ Configure Application
-Set up your environment properties.
-```bash
-cd backend/src/main/resources
-cp application.properties.example application.properties
-```
-
-**`application.properties` configuration:**
-```properties
-# Database
-spring.datasource.url=jdbc:postgresql://localhost:5432/log_aggregator
-spring.datasource.username=log_user
-spring.datasource.password=your_password
-
-# Kafka
-spring.kafka.bootstrap-servers=localhost:9092
-
-# Batch Optimization
-spring.jpa.properties.hibernate.jdbc.batch_size=500
-spring.kafka.consumer.max-poll-records=500
-spring.kafka.listener.concurrency=3
-
-# Monitoring
-management.endpoints.web.exposure.include=health,info,prometheus,metrics
-management.endpoint.health.show-details=always
-```
-
-### 5️⃣ Build & Run
-```bash
-cd backend
-./mvnw clean install
-./mvnw spring-boot:run
-```
-**API URL:** `http://localhost:8080`
-
+### 3️⃣ Access the Application
+- **API URL:** http://localhost:8080
+- **Actuator Health:** `http://localhost:8080/actuator/health`
 ---
 
 ## 📚 API Documentation
@@ -221,7 +163,8 @@ cd backend
 Run the full test suite (Unit, Component, Load, and Integration).
 
 ```bash
-./mvnw test
+cd backend
+DB_PORT=5433 ./mvnw test
 ```
 
 **Current Test Coverage (67 Tests):
@@ -239,8 +182,9 @@ Run the full test suite (Unit, Component, Load, and Integration).
 * ✅ **Phase 3:** Production Monitoring
 * ✅ **Phase 4:** Elasticsearch Integration
 * ✅ **Phase 5:** Redis Caching
-* ⏭️ **Phase 6:** Real-Time Streaming
-* ⏭️ **Phase 7:** Cloud Deployment
+* ✅ **Phase 6:** Docker Containerization
+* ⏭️ **Phase 7:** Real-Time Streaming
+* ⏭️ **Phase 8:** Cloud Deployment
 
 ---
 
@@ -252,5 +196,6 @@ This project demonstrates core concepts in backend engineering:
 * **Reliability:** Implementing DLQs and fallback strategies.
 * **Benchmarking:** How to properly stress-test a system to find bottlenecks (e.g., Connection Pool limits vs Non-blocking IO).
 * **Polyglot Persistence:** Using SQL for truth and NoSQL for search.
+* **Containerization:** Managing complex distributed systems with Docker Compose.
 
-**Built with:** `Spring Boot 3.4.1` · `Apache Kafka` · `PostgreSQL` · `Micrometer` · `Prometheus` · `Redis`
+**Built with:** `Spring Boot 3.4.1` · `Apache Kafka` · `PostgreSQL` · `Micrometer` · `Prometheus` · `Redis` · `Docker`
