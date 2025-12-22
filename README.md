@@ -77,7 +77,7 @@ _Distributed async processing with Elasticsearch indexing and **Redis Caching** 
 
 ### Technical Highlights
 - **Async "Fire-and-Forget":** Non-blocking Elasticsearch writes ensure Postgres latency doesn't bottleneck throughput.
-- **Inverted Indexing:** Switched from SQL `LIKE %...%` scans ($O(N)$) to Elasticsearch Inverted Index ($O(1)$).
+- **Inverted Indexing:** Switched from SQL `LIKE %...%` scans **O(N)** to Elasticsearch Inverted Index **O(1)**.
 - **Batch Processing:** Kafka batch listeners and Spring Data `saveAll` for efficient network usage.
 - **Observability:** Metric tracking for `ingest.latency`, `cache.hit_rate`, and `consumer.lag`.
 
@@ -102,6 +102,15 @@ _Distributed async processing with Elasticsearch indexing and **Redis Caching** 
 | **Ingestion Rate** | **10,800 logs/sec** | ~930 Million logs/day theoretical max |
 | **Write Speedup** | **3.42x** | Compared to direct DB writes |
 | **Resilience** | **High** | Survived load that crashed the primary DB |
+
+### Caching performance
+
+| Metric | Uncached (Elasticsearch Direct) | Cached (Redis Hit) | Speedup Factor |
+| :--- | :---: | :---: | :---: |
+| **Average Latency** | 63.85 ms | **4.15 ms** | **15.4x 🚀** |
+| **P50 (Median)** | ~45.00 ms | **3.04 ms** | **14.8x** |
+| **P95 (Tail)** | ~98.00 ms | **10.24 ms** | **9.5x** |
+| **P99 (Worst Case)** | ~120.00 ms | **17.19 ms** | **7.0x** |
 
 ---
 
