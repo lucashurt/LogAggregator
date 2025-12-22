@@ -77,7 +77,7 @@ _Distributed async processing with Elasticsearch indexing and **Redis Caching** 
 
 ### Technical Highlights
 - **Async "Fire-and-Forget":** Non-blocking Elasticsearch writes ensure Postgres latency doesn't bottleneck throughput.
-- **Inverted Indexing:** Switched from SQL `LIKE %...%` scans ($O(N)$) to Elasticsearch Inverted Index ($O(1)$).
+- **Inverted Indexing:** Switched from SQL `LIKE %...%` scans **O(N)** to Elasticsearch Inverted Index **O(1)**.
 - **Batch Processing:** Kafka batch listeners and Spring Data `saveAll` for efficient network usage.
 - **Observability:** Metric tracking for `ingest.latency`, `cache.hit_rate`, and `consumer.lag`.
 
