@@ -1,7 +1,19 @@
 function FilterPanel({ filters, setFilters }) {
-    const updateFilter = (key,value) => {
-        setFilters(prev => ({...prev, [key]: value}));
-    }
+    const updateFilter = (key, value) => {
+        setFilters(prev => ({ ...prev, [key]: value }));
+    };
+
+    const clearFilters = () => {
+        setFilters({
+            serviceId: '',
+            level: '',
+            traceId: '',
+            startTimestamp: '',
+            endTimestamp: '',
+            query: ''
+        });
+    };
+
     return (
         <aside className="filter-panel">
             <h3>Filters</h3>
@@ -31,6 +43,34 @@ function FilterPanel({ filters, setFilters }) {
             </div>
 
             <div className="filter-group">
+                <label>Trace ID</label>
+                <input
+                    type="text"
+                    placeholder="e.g., trace-001"
+                    value={filters.traceId}
+                    onChange={(e) => updateFilter('traceId', e.target.value)}
+                />
+            </div>
+
+            <div className="filter-group">
+                <label>Start Time</label>
+                <input
+                    type="datetime-local"
+                    value={filters.startTimestamp}
+                    onChange={(e) => updateFilter('startTimestamp', e.target.value)}
+                />
+            </div>
+
+            <div className="filter-group">
+                <label>End Time</label>
+                <input
+                    type="datetime-local"
+                    value={filters.endTimestamp}
+                    onChange={(e) => updateFilter('endTimestamp', e.target.value)}
+                />
+            </div>
+
+            <div className="filter-group">
                 <label>Search Text</label>
                 <input
                     type="text"
@@ -40,10 +80,7 @@ function FilterPanel({ filters, setFilters }) {
                 />
             </div>
 
-            <button
-                className="clear-filters"
-                onClick={() => setFilters({ serviceId: '', level: '', query: '' })}
-            >
+            <button className="clear-filters" onClick={clearFilters}>
                 Clear Filters
             </button>
         </aside>
