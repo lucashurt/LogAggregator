@@ -4,12 +4,29 @@ import LogEntry from "./LogEntry";
 function LogStream({logs,filters}){
 
     const validTimestamp = (log) => {
-        return (
-            log.startTimestamp >= filters.startTimestamp &&
-            log.startTimestamp <= filters.endTimestamp &&
-            log.endTimestamp >= filters.startTimestamp &&
-            log.endTimestamp <= filters.endTimestamp
-        );
+        // If no timestamp filters are set, always pass
+        if (!filters.startTimestamp && !filters.endTimestamp) {
+            return true;
+        }
+
+        const logTime = new Date(log.timestamp).getTime();
+
+        // If only start time is set
+        if (filters.startTimestamp && !filters.endTimestamp) {
+            const startTime = new Date(filters.startTimestamp).getTime();
+            return logTime >= startTime;
+        }
+
+        // If only end time is set
+        if (!filters.startTimestamp && filters.endTimestamp) {
+            const endTime = new Date(filters.endTimestamp).getTime();
+            return logTime <= endTime;
+        }
+
+        // If both are set
+        const startTime = new Date(filters.startTimestamp).getTime();
+        const endTime = new Date(filters.endTimestamp).getTime();
+        return logTime >= startTime && logTime <= endTime;
     }
 
     const filteredLogs = useMemo(() => {
@@ -23,8 +40,7 @@ function LogStream({logs,filters}){
             if(filters.level && log.level !== filters.level){
                 return false;
             }
-            if(filters.startTimestamp && filters.endTimestamp && !validTimestamp(log))
-            if(filters.query && !log.message.toLowerCase().includes(filters.query)){
+            if(filters.query && !log.message.toLowerCase().includes(filters.query.toLowerCase())){
                 return false;
             }
             return true;
