@@ -43,6 +43,9 @@ function LogStream({logs,filters}){
             if(filters.query && !log.message.toLowerCase().includes(filters.query.toLowerCase())){
                 return false;
             }
+            if((filters.startTimestamp || filters.endTimestamp) && !validTimestamp(log)){
+                return false;
+            }
             return true;
         });
     },[logs,filters]);

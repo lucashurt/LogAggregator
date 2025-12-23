@@ -2,11 +2,11 @@ package com.example.logaggregator.config;
 
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -33,15 +33,12 @@ public class KafkaConfig {
     @Value("${spring.kafka.listener.concurrency:3}")
     private int concurrency;
 
-    @Bean
-    public ObjectMapper objectMapper() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new JavaTimeModule());
-        return mapper;
-    }
+    // Note: We inject the global ObjectMapper from JacksonConfig
+    // This ensures consistent date serialization across the entire application
 
     @Bean
-    public ProducerFactory<String, LogEntryRequest> producerFactory(ObjectMapper objectMapper) {
+    public ProducerFactory<String, LogEntryRequest> producerFactory(
+            @Qualifier("objectMapper") ObjectMapper objectMapper) {
         Map<String, Object> config = new HashMap<>();
         config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
@@ -59,12 +56,14 @@ public class KafkaConfig {
     }
 
     @Bean
-    public KafkaTemplate<String, LogEntryRequest> kafkaTemplate(ProducerFactory<String, LogEntryRequest> producerFactory) {
+    public KafkaTemplate<String, LogEntryRequest> kafkaTemplate(
+            ProducerFactory<String, LogEntryRequest> producerFactory) {
         return new KafkaTemplate<>(producerFactory);
     }
 
     @Bean
-    public ConsumerFactory<String, LogEntryRequest> consumerFactory(ObjectMapper objectMapper) {
+    public ConsumerFactory<String, LogEntryRequest> consumerFactory(
+            @Qualifier("objectMapper") ObjectMapper objectMapper) {
         Map<String, Object> config = new HashMap<>();
         config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         config.put(ConsumerConfig.GROUP_ID_CONFIG, "log-processor-group");
