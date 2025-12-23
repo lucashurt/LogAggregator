@@ -1,8 +1,9 @@
 import {searchLogs} from "../services/api";
 import {useState} from "react";
 import LogEntry from "./LogEntry";
+import MetricsDashboard from "./MetricsDashboard";
 
-function LogSearch({ filters }) {
+function LogSearch({ filters, setFilters }) {
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(0);
@@ -11,16 +12,37 @@ function LogSearch({ filters }) {
     const [totalElements, setTotalElements] = useState(0);
     const [searchExecuted, setSearchExecuted] = useState(false);
 
+    // Convert datetime-local format to ISO format for backend
+    const convertToISO = (datetimeLocal) => {
+        if (!datetimeLocal) return null;
+        // datetime-local gives us "2025-12-23T10:30"
+        // Backend needs "2025-12-23T10:30:00Z"
+        return new Date(datetimeLocal).toISOString();
+    };
+
     const handleSearch = async (newPage = 0) => {
         setLoading(true);
         setPage(newPage);
 
         try {
-            const data = await searchLogs({
-                ...filters,
+            // Convert timestamp filters to ISO format
+            const searchParams = {
+                serviceId: filters.serviceId || undefined,
+                level: filters.level || undefined,
+                traceId: filters.traceId || undefined,
+                startTime: filters.startTimestamp ? convertToISO(filters.startTimestamp) : undefined,
+                endTime: filters.endTimestamp ? convertToISO(filters.endTimestamp) : undefined,
+                query: filters.query || undefined,
                 page: newPage,
                 size: pageSize
-            });
+            };
+
+            // Remove undefined values
+            Object.keys(searchParams).forEach(key =>
+                searchParams[key] === undefined && delete searchParams[key]
+            );
+
+            const data = await searchLogs(searchParams);
 
             setResults(data.logs);
             setTotalPages(data.totalPages);
@@ -46,24 +68,18 @@ function LogSearch({ filters }) {
             return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
         };
 
-        // Trigger parent's filter update
-        const event = new CustomEvent('timeRangeSelected', {
-            detail: {
-                startTimestamp: start.toISOString(),
-                endTimestamp: now.toISOString()
-            }
-        });
-        window.dispatchEvent(event);
-
-        // Update local display (this is a workaround - in real app, use proper state management)
-        document.querySelector('input[type="datetime-local"]:nth-of-type(1)').value = formatDateTime(start);
-        document.querySelector('input[type="datetime-local"]:nth-of-type(2)').value = formatDateTime(now);
+        // Properly update parent state
+        setFilters(prev => ({
+            ...prev,
+            startTimestamp: formatDateTime(start),
+            endTimestamp: formatDateTime(now)
+        }));
     };
 
     const handlePageSizeChange = (newSize) => {
         setPageSize(newSize);
         if (searchExecuted) {
-            handleSearch(0); // Re-run search with new page size
+            handleSearch(0);
         }
     };
 
@@ -75,43 +91,46 @@ function LogSearch({ filters }) {
         <div className="log-search">
             <div className="search-header">
                 <div className="search-info">
-                    <h2>🔍 Search Historical Logs</h2>
+                    <h2>Search Logs</h2>
                     <p className="search-description">
-                        Query your entire log database. Use filters to narrow down issues.
+                        Query your entire log database with advanced filtering
                     </p>
                     {searchExecuted && (
                         <span className="search-stats">
                             {totalElements === 0
                                 ? "No logs found"
-                                : `Found ${totalElements.toLocaleString()} logs - Showing page ${page + 1} of ${totalPages}`
+                                : `Found ${totalElements.toLocaleString()} logs - Page ${page + 1} of ${totalPages}`
                             }
                         </span>
                     )}
                 </div>
                 <div className="search-controls">
                     <div className="quick-time-filters">
-                        <button onClick={() => setTimeRange(1)} className="time-preset">Last Hour</button>
-                        <button onClick={() => setTimeRange(6)} className="time-preset">Last 6 Hours</button>
-                        <button onClick={() => setTimeRange(24)} className="time-preset">Last 24 Hours</button>
+                        <button onClick={() => setTimeRange(1)} className="time-preset">1h</button>
+                        <button onClick={() => setTimeRange(6)} className="time-preset">6h</button>
+                        <button onClick={() => setTimeRange(24)} className="time-preset">24h</button>
+                        <button onClick={() => setTimeRange(168)} className="time-preset">7d</button>
                     </div>
                     <select
                         value={pageSize}
                         onChange={(e) => handlePageSizeChange(Number(e.target.value))}
                         disabled={loading}
                     >
-                        <option value={50}>50 per page</option>
-                        <option value={100}>100 per page</option>
-                        <option value={200}>200 per page</option>
-                        <option value={500}>500 per page</option>
+                        <option value={50}>50 / page</option>
+                        <option value={100}>100 / page</option>
+                        <option value={200}>200 / page</option>
+                        <option value={500}>500 / page</option>
                     </select>
                     <button onClick={() => handleSearch(0)} disabled={loading} className="search-btn">
-                        {loading ? '⏳ Searching...' : '🔍 Search'}
+                        {loading ? 'Searching...' : 'Search'}
                     </button>
                 </div>
             </div>
 
             {searchExecuted && results.length > 0 && (
                 <>
+                    <MetricsDashboard logs={results} />
+
                     <div className="log-list">
                         {results.map(log => (
                             <LogEntry key={log.id} log={log} />
@@ -123,20 +142,18 @@ function LogSearch({ filters }) {
                             onClick={() => goToPage(0)}
                             disabled={page === 0 || loading}
                         >
-                            ⏮ First
+                            First
                         </button>
                         <button
                             onClick={() => goToPage(page - 1)}
                             disabled={page === 0 || loading}
                         >
-                            ← Previous
+                            Previous
                         </button>
 
                         <div className="page-numbers">
-                            {/* Show page numbers */}
                             {page > 2 && <span>...</span>}
                             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                // Show pages around current page
                                 let pageNum = page - 2 + i;
                                 if (pageNum < 0) pageNum = i;
                                 if (pageNum >= totalPages) return null;
@@ -159,18 +176,18 @@ function LogSearch({ filters }) {
                             onClick={() => goToPage(page + 1)}
                             disabled={page >= totalPages - 1 || loading}
                         >
-                            Next →
+                            Next
                         </button>
                         <button
                             onClick={() => goToPage(totalPages - 1)}
                             disabled={page >= totalPages - 1 || loading}
                         >
-                            Last ⏭
+                            Last
                         </button>
                     </div>
 
                     <div className="pagination-summary">
-                        Showing logs {page * pageSize + 1} - {Math.min((page + 1) * pageSize, totalElements)} of {totalElements.toLocaleString()}
+                        Showing {page * pageSize + 1} - {Math.min((page + 1) * pageSize, totalElements)} of {totalElements.toLocaleString()}
                     </div>
                 </>
             )}
@@ -178,19 +195,41 @@ function LogSearch({ filters }) {
             {!searchExecuted && (
                 <div className="empty-state">
                     <div className="search-instructions">
-                        <h3>💡 How to Use Search</h3>
-                        <ul>
-                            <li><strong>Time Range:</strong> Use "Last Hour" / "Last 24 Hours" or set custom dates</li>
-                            <li><strong>Service Filter:</strong> Filter by specific service (e.g., "payment-service")</li>
-                            <li><strong>Log Level:</strong> Show only ERROR, WARNING, etc.</li>
-                            <li><strong>Text Search:</strong> Search message content (e.g., "timeout", "failed")</li>
-                            <li><strong>Trace ID:</strong> Follow a specific request across services</li>
-                        </ul>
-                        <p className="search-tip">
-                            💡 <strong>Tip:</strong> Start with a time range, then add more filters to narrow down.
-                        </p>
+                        <h3>Getting Started</h3>
+                        <div className="instructions-grid">
+                            <div className="instruction-card">
+                                <div className="instruction-icon">⏱️</div>
+                                <h4>Time Range</h4>
+                                <p>Use quick filters (1h, 6h, 24h) or set custom date range</p>
+                            </div>
+                            <div className="instruction-card">
+                                <div className="instruction-icon">🎯</div>
+                                <h4>Service Filter</h4>
+                                <p>Filter by specific service (auth-service, payment-service, etc.)</p>
+                            </div>
+                            <div className="instruction-card">
+                                <div className="instruction-icon">🚨</div>
+                                <h4>Log Level</h4>
+                                <p>Show only ERROR, WARNING, INFO, or DEBUG logs</p>
+                            </div>
+                            <div className="instruction-card">
+                                <div className="instruction-icon">🔍</div>
+                                <h4>Full-Text Search</h4>
+                                <p>Search message content: "timeout", "connection failed", etc.</p>
+                            </div>
+                            <div className="instruction-card">
+                                <div className="instruction-icon">🔗</div>
+                                <h4>Trace ID</h4>
+                                <p>Follow a request across services with trace ID</p>
+                            </div>
+                            <div className="instruction-card">
+                                <div className="instruction-icon">⚡</div>
+                                <h4>Performance</h4>
+                                <p>Searches powered by Elasticsearch for millisecond response times</p>
+                            </div>
+                        </div>
                         <button onClick={() => handleSearch(0)} className="search-btn-large">
-                            🔍 Search All Logs
+                            Search All Logs
                         </button>
                     </div>
                 </div>
@@ -199,7 +238,7 @@ function LogSearch({ filters }) {
             {searchExecuted && results.length === 0 && (
                 <div className="empty-state">
                     <p>No logs found matching your criteria</p>
-                    <span>Try adjusting your filters</span>
+                    <span>Try adjusting your filters or expanding the time range</span>
                 </div>
             )}
         </div>

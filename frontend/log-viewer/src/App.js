@@ -6,7 +6,7 @@ import FilterPanel from "./components/FilterPanel";
 import LogSearch from "./components/LogSearch";
 
 function App() {
-    const [view, setView] = useState('search'); // ← DEFAULT to Search (not stream)
+    const [view, setView] = useState('search');
     const [filters, setFilters] = useState({
         serviceId: '',
         level: '',
@@ -16,18 +16,15 @@ function App() {
         query: ''
     });
 
-    // Live Stream: Small buffer for real-time monitoring ONLY
+    // Live Stream: Small buffer for real-time monitoring
     const [realtimeLogs, setRealtimeLogs] = useState([]);
     const [wsConnected, setWsConnected] = useState(false);
 
-    // Configuration for Live Stream
-    const REALTIME_BUFFER_SIZE = 1000; // Small buffer - only for "what's happening NOW"
+    const REALTIME_BUFFER_SIZE = 1000;
 
     useEffect(() => {
-        // Connect WebSocket for real-time monitoring
         websocketService.connect((newLog) => {
             setRealtimeLogs(prevLogs => {
-                // Keep only recent logs (last 500)
                 return [newLog, ...prevLogs].slice(0, REALTIME_BUFFER_SIZE);
             });
         });
@@ -45,12 +42,12 @@ function App() {
                 <h1>Log Aggregator</h1>
                 <div className="header-controls">
                     <span className={`connection-status ${wsConnected ? 'connected' : 'disconnected'}`}>
-                        {wsConnected ? '● Live' : '○ Disconnected'}
+                        {wsConnected ? 'Live' : 'Disconnected'}
                     </span>
 
                     {view === 'stream' && (
                         <span className="log-count-badge">
-                            {realtimeLogs.length} / {REALTIME_BUFFER_SIZE} recent logs
+                            {realtimeLogs.length} / {REALTIME_BUFFER_SIZE}
                         </span>
                     )}
 
@@ -58,13 +55,13 @@ function App() {
                         className={view === 'search' ? 'active' : ''}
                         onClick={() => setView('search')}
                     >
-                        🔍 Search & Investigate
+                        Search
                     </button>
                     <button
                         className={view === 'stream' ? 'active' : ''}
                         onClick={() => setView('stream')}
                     >
-                        📡 Live Monitor
+                        Live Stream
                     </button>
                 </div>
             </header>
@@ -84,7 +81,10 @@ function App() {
                             bufferSize={REALTIME_BUFFER_SIZE}
                         />
                     ) : (
-                        <LogSearch filters={filters} />
+                        <LogSearch
+                            filters={filters}
+                            setFilters={setFilters}
+                        />
                     )}
                 </main>
             </div>

@@ -1,4 +1,3 @@
-// src/components/MetricsDashboard.jsx
 import React, { useMemo } from 'react';
 
 function MetricsDashboard({ logs }) {
@@ -26,22 +25,22 @@ function MetricsDashboard({ logs }) {
             <div className="metric-card">
                 <h4>Errors</h4>
                 <span className="metric-value error">
-          {metrics.levelCounts.ERROR || 0}
-        </span>
+                    {metrics.levelCounts.ERROR || 0}
+                </span>
             </div>
 
             <div className="metric-card">
                 <h4>Warnings</h4>
                 <span className="metric-value warning">
-          {metrics.levelCounts.WARNING || 0}
-        </span>
+                    {metrics.levelCounts.WARNING || 0}
+                </span>
             </div>
 
             <div className="metric-card">
-                <h4>Active Services</h4>
+                <h4>Services</h4>
                 <span className="metric-value">
-          {Object.keys(metrics.serviceCounts).length}
-        </span>
+                    {Object.keys(metrics.serviceCounts).length}
+                </span>
             </div>
         </div>
     );
