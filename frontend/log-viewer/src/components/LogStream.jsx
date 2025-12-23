@@ -1,0 +1,3 @@
+function LogStream({logs,filters}){
+
+}
