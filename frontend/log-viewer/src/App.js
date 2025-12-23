@@ -1,61 +1,34 @@
-import logo from './logo.svg';
 import './App.css';
 import {useEffect, useState} from "react";
 import websocketService from "./services/websocket";
 import LogStream from "./components/LogStream";
 import FilterPanel from "./components/FilterPanel";
 import LogSearch from "./components/LogSearch";
-import {searchLogs} from "./services/api";
-import MetricsDashboard from "./components/MetricsDashboard";
 
 function App() {
-    const [view, setView] = useState('stream');
+    const [view, setView] = useState('search'); // ← DEFAULT to Search (not stream)
     const [filters, setFilters] = useState({
         serviceId: '',
         level: '',
+        traceId: '',
+        startTimestamp: '',
+        endTimestamp: '',
         query: ''
     });
-    const [logs, setLogs] = useState([]);
-    const [wsConnected, setWsConnected] = useState(false);
-    const [loading, setLoading] = useState(true);
 
-    // Configuration
-    const MAX_LOGS_IN_MEMORY = 5000; // Increased from 500
-    const INITIAL_LOAD_SIZE = 1000;   // Load last 1000 logs on startup
+    // Live Stream: Small buffer for real-time monitoring ONLY
+    const [realtimeLogs, setRealtimeLogs] = useState([]);
+    const [wsConnected, setWsConnected] = useState(false);
+
+    // Configuration for Live Stream
+    const REALTIME_BUFFER_SIZE = 1000; // Small buffer - only for "what's happening NOW"
 
     useEffect(() => {
-        // STEP 1: Load historical logs first
-        const loadHistoricalLogs = async () => {
-            try {
-                setLoading(true);
-                console.log('Loading historical logs...');
-
-                // Fetch most recent logs from backend
-                const response = await searchLogs({
-                    page: 0,
-                    size: INITIAL_LOAD_SIZE
-                });
-
-                setLogs(response.logs);
-                console.log(`✅ Loaded ${response.logs.length} historical logs`);
-            } catch (error) {
-                console.error('❌ Failed to load historical logs:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        loadHistoricalLogs();
-
-        // STEP 2: Start WebSocket for real-time updates
+        // Connect WebSocket for real-time monitoring
         websocketService.connect((newLog) => {
-            setLogs(prevLogs => {
-                // Prevent duplicates (check by ID if available)
-                const isDuplicate = prevLogs.some(log => log.id === newLog.id);
-                if (isDuplicate) return prevLogs;
-
-                // Add new log and maintain buffer size
-                return [newLog, ...prevLogs].slice(0, MAX_LOGS_IN_MEMORY);
+            setRealtimeLogs(prevLogs => {
+                // Keep only recent logs (last 500)
+                return [newLog, ...prevLogs].slice(0, REALTIME_BUFFER_SIZE);
             });
         });
 
@@ -74,36 +47,42 @@ function App() {
                     <span className={`connection-status ${wsConnected ? 'connected' : 'disconnected'}`}>
                         {wsConnected ? '● Live' : '○ Disconnected'}
                     </span>
-                    <span className="log-count-badge">
-                        {logs.length} / {MAX_LOGS_IN_MEMORY} logs in memory
-                    </span>
-                    <button
-                        className={view === 'stream' ? 'active' : ''}
-                        onClick={() => setView('stream')}
-                    >
-                        Live Stream
-                    </button>
+
+                    {view === 'stream' && (
+                        <span className="log-count-badge">
+                            {realtimeLogs.length} / {REALTIME_BUFFER_SIZE} recent logs
+                        </span>
+                    )}
+
                     <button
                         className={view === 'search' ? 'active' : ''}
                         onClick={() => setView('search')}
                     >
-                        Search
+                        🔍 Search & Investigate
+                    </button>
+                    <button
+                        className={view === 'stream' ? 'active' : ''}
+                        onClick={() => setView('stream')}
+                    >
+                        📡 Live Monitor
                     </button>
                 </div>
             </header>
 
             <div className="app-body">
-                <FilterPanel filters={filters} setFilters={setFilters} />
+                <FilterPanel
+                    filters={filters}
+                    setFilters={setFilters}
+                    view={view}
+                />
 
                 <main className="main-content">
-                    <MetricsDashboard logs={logs} />
-
-                    {loading && view === 'stream' ? (
-                        <div className="loading-state">
-                            <p>Loading historical logs...</p>
-                        </div>
-                    ) : view === 'stream' ? (
-                        <LogStream logs={logs} filters={filters} />
+                    {view === 'stream' ? (
+                        <LogStream
+                            logs={realtimeLogs}
+                            filters={filters}
+                            bufferSize={REALTIME_BUFFER_SIZE}
+                        />
                     ) : (
                         <LogSearch filters={filters} />
                     )}
