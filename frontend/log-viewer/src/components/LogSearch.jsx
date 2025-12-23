@@ -1,4 +1,7 @@
 import {searchLogs} from "../services/api";
+import {useState} from "react";
+import LogEntry from "./LogEntry";
+
 
 function LogSearch({ filters }) {
     const [results, setResults] = useState([]);

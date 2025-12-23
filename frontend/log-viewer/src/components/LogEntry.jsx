@@ -1,3 +1,6 @@
+import {format} from "date-fns";
+import {useState} from "react";
+
 function LogEntry({log}) {
     const [expanded, setExpanded] = useState(false);
 

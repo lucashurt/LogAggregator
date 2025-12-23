@@ -1,4 +1,5 @@
 import {useMemo} from "react";
+import LogEntry from "./LogEntry";
 
 function LogStream({logs,filters}){
 

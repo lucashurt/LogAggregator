@@ -1,7 +1,7 @@
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 
-class WebsocketService {
+class WebSocketService {
     constructor() {
         this.client = null;
         this.connected = false;
@@ -49,4 +49,7 @@ class WebsocketService {
     }
 }
 
-export default new WebSocketService();
+// Export a singleton instance
+const websocketService = new WebSocketService();
+export default websocketService;
+

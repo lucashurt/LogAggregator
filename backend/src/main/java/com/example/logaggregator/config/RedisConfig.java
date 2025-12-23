@@ -1,12 +1,10 @@
 package com.example.logaggregator.config;
 
-// 1. USE STANDARD JACKSON 2 IMPORTS
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import com.fasterxml.jackson.databind.jsontype.PolymorphicTypeValidator;
-import com.fasterxml.jackson.annotation.JsonTypeInfo; // standard annotation package
 
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
@@ -33,7 +31,6 @@ public class RedisConfig {
                 .build();
 
         return JsonMapper.builder()
-                // FIX: Register JavaTimeModule (and others) automatically
                 .findAndAddModules()
                 .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
                 .activateDefaultTyping(typeValidator, ObjectMapper.DefaultTyping.EVERYTHING)
