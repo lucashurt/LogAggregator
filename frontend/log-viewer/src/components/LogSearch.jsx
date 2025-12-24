@@ -10,8 +10,11 @@ function LogSearch({ filters, setFilters }) {
     const [pageSize, setPageSize] = useState(100);
     const [searchExecuted, setSearchExecuted] = useState(false);
 
-    // NEW: Store initial search metadata separately (doesn't update on pagination)
+    // Store initial search metadata separately (doesn't update on pagination)
     const [initialSearchMetadata, setInitialSearchMetadata] = useState(null);
+
+    // FIX: Add render key to force component updates
+    const [renderKey, setRenderKey] = useState(0);
 
     // Convert datetime-local format to ISO format for backend
     const convertToISO = (datetimeLocal) => {
@@ -40,8 +43,28 @@ function LogSearch({ filters, setFilters }) {
                 searchParams[key] === undefined && delete searchParams[key]
             );
 
+            // DEBUG LOG
+            console.log('🔍 Search Request:', {
+                page: newPage,
+                isNewSearch,
+                params: searchParams,
+                filterState: filters
+            });
+
             const data = await searchLogs(searchParams);
 
+            // DEBUG LOG
+            console.log('📊 Search Response:', {
+                totalElements: data.totalElements,
+                currentPage: data.currentPage,
+                totalPages: data.totalPages,
+                logsReturned: data.logs.length,
+                firstLogId: data.logs[0]?.id,
+                lastLogId: data.logs[data.logs.length - 1]?.id
+            });
+
+            // FIX: Force re-render by incrementing key
+            setRenderKey(prev => prev + 1);
             setSearchResponse(data);
             setSearchExecuted(true);
 
@@ -54,12 +77,12 @@ function LogSearch({ filters, setFilters }) {
                     levelCounts: data.levelCounts,
                     serviceCounts: data.serviceCounts
                 });
-                console.log(`NEW SEARCH: Found ${data.totalElements} total logs in ${data.searchTimeMs}ms`);
+                console.log(`✨ NEW SEARCH: Found ${data.totalElements} total logs in ${data.searchTimeMs}ms`);
             } else {
-                console.log(`Page ${newPage + 1} loaded (using cached metrics)`);
+                console.log(`📄 Page ${newPage + 1} loaded (${data.logs.length} logs)`);
             }
         } catch (error) {
-            console.error('Search failed:', error);
+            console.error('❌ Search failed:', error);
             alert('Search failed. Check console for details.');
         } finally {
             setLoading(false);
@@ -91,6 +114,7 @@ function LogSearch({ filters, setFilters }) {
     };
 
     const goToPage = (pageNum) => {
+        console.log(`🔢 Navigating to page ${pageNum + 1}`);
         // This is just pagination, not a new search
         handleSearch(pageNum, false);
     };
@@ -146,7 +170,6 @@ function LogSearch({ filters, setFilters }) {
 
             {searchExecuted && searchResponse && searchResponse.logs.length > 0 && (
                 <>
-                    {/* Pass initial metadata that doesn't change on pagination */}
                     <MetricsDashboard
                         levelCounts={displayMetadata.levelCounts}
                         serviceCounts={displayMetadata.serviceCounts}
@@ -154,9 +177,13 @@ function LogSearch({ filters, setFilters }) {
                         searchTimeMs={displayMetadata.searchTimeMs}
                     />
 
-                    <div className="log-list">
-                        {searchResponse.logs.map(log => (
-                            <LogEntry key={log.id} log={log} />
+                    {/* FIX: Add key to force re-render when logs change */}
+                    <div className="log-list" key={renderKey}>
+                        {searchResponse.logs.map((log, index) => (
+                            <LogEntry
+                                key={`${log.id}-${page}-${index}`}
+                                log={log}
+                            />
                         ))}
                     </div>
 

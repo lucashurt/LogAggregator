@@ -22,6 +22,22 @@ function App() {
 
     const REALTIME_BUFFER_SIZE = 1000;
 
+    // FIX: Clear filters when switching views to prevent bleed
+    const handleViewChange = (newView) => {
+        if (newView !== view) {
+            console.log(`🔄 Switching from ${view} to ${newView} - clearing filters`);
+            setFilters({
+                serviceId: '',
+                level: '',
+                traceId: '',
+                startTimestamp: '',
+                endTimestamp: '',
+                query: ''
+            });
+            setView(newView);
+        }
+    };
+
     useEffect(() => {
         websocketService.connect((newLog) => {
             setRealtimeLogs(prevLogs => {
@@ -53,13 +69,13 @@ function App() {
 
                     <button
                         className={view === 'search' ? 'active' : ''}
-                        onClick={() => setView('search')}
+                        onClick={() => handleViewChange('search')}
                     >
                         Search
                     </button>
                     <button
                         className={view === 'stream' ? 'active' : ''}
-                        onClick={() => setView('stream')}
+                        onClick={() => handleViewChange('stream')}
                     >
                         Live Stream
                     </button>
