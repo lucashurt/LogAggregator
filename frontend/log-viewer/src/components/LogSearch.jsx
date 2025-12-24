@@ -4,19 +4,15 @@ import LogEntry from "./LogEntry";
 import MetricsDashboard from "./MetricsDashboard";
 
 function LogSearch({ filters, setFilters }) {
-    const [results, setResults] = useState([]);
+    const [searchResponse, setSearchResponse] = useState(null);
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(100);
-    const [totalPages, setTotalPages] = useState(0);
-    const [totalElements, setTotalElements] = useState(0);
     const [searchExecuted, setSearchExecuted] = useState(false);
 
     // Convert datetime-local format to ISO format for backend
     const convertToISO = (datetimeLocal) => {
         if (!datetimeLocal) return null;
-        // datetime-local gives us "2025-12-23T10:30"
-        // Backend needs "2025-12-23T10:30:00Z"
         return new Date(datetimeLocal).toISOString();
     };
 
@@ -25,7 +21,6 @@ function LogSearch({ filters, setFilters }) {
         setPage(newPage);
 
         try {
-            // Convert timestamp filters to ISO format
             const searchParams = {
                 serviceId: filters.serviceId || undefined,
                 level: filters.level || undefined,
@@ -44,12 +39,10 @@ function LogSearch({ filters, setFilters }) {
 
             const data = await searchLogs(searchParams);
 
-            setResults(data.logs);
-            setTotalPages(data.totalPages);
-            setTotalElements(data.totalElements);
+            setSearchResponse(data);
             setSearchExecuted(true);
 
-            console.log(`Found ${data.totalElements} total logs, showing page ${newPage + 1}/${data.totalPages}`);
+            console.log(`Found ${data.totalElements} total logs, showing page ${newPage + 1}/${data.totalPages}, search took ${data.searchTimeMs}ms`);
         } catch (error) {
             console.error('Search failed:', error);
             alert('Search failed. Check console for details.');
@@ -62,13 +55,11 @@ function LogSearch({ filters, setFilters }) {
         const now = new Date();
         const start = new Date(now.getTime() - hours * 60 * 60 * 1000);
 
-        // Format for datetime-local input: YYYY-MM-DDTHH:mm
         const formatDateTime = (date) => {
             const pad = (n) => n.toString().padStart(2, '0');
             return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
         };
 
-        // Properly update parent state
         setFilters(prev => ({
             ...prev,
             startTimestamp: formatDateTime(start),
@@ -87,41 +78,6 @@ function LogSearch({ filters, setFilters }) {
         handleSearch(pageNum);
     };
 
-    // Calculate which page numbers to show
-    const getPageNumbers = () => {
-        const pages = [];
-        const maxPagesToShow = 5;
-
-        if (totalPages <= maxPagesToShow) {
-            // Show all pages if total is small
-            for (let i = 0; i < totalPages; i++) {
-                pages.push(i);
-            }
-        } else {
-            // Show pages around current page
-            let startPage = Math.max(0, page - 2);
-            let endPage = Math.min(totalPages - 1, page + 2);
-
-            // Adjust if we're near the start
-            if (page < 2) {
-                endPage = Math.min(totalPages - 1, maxPagesToShow - 1);
-            }
-
-            // Adjust if we're near the end
-            if (page > totalPages - 3) {
-                startPage = Math.max(0, totalPages - maxPagesToShow);
-            }
-
-            for (let i = startPage; i <= endPage; i++) {
-                pages.push(i);
-            }
-        }
-
-        return pages;
-    };
-
-    const pageNumbers = getPageNumbers();
-
     return (
         <div className="log-search">
             <div className="search-header">
@@ -130,11 +86,11 @@ function LogSearch({ filters, setFilters }) {
                     <p className="search-description">
                         Query your entire log database with advanced filtering
                     </p>
-                    {searchExecuted && (
+                    {searchExecuted && searchResponse && (
                         <span className="search-stats">
-                            {totalElements === 0
+                            {searchResponse.totalElements === 0
                                 ? "No logs found"
-                                : `Found ${totalElements.toLocaleString()} logs - Page ${page + 1} of ${totalPages}`
+                                : `Found ${searchResponse.totalElements.toLocaleString()} logs in ${searchResponse.searchTimeMs}ms - Page ${page + 1} of ${searchResponse.totalPages}`
                             }
                         </span>
                     )}
@@ -162,12 +118,12 @@ function LogSearch({ filters, setFilters }) {
                 </div>
             </div>
 
-            {searchExecuted && results.length > 0 && (
+            {searchExecuted && searchResponse && searchResponse.logs.length > 0 && (
                 <>
-                    <MetricsDashboard logs={results} />
+                    <MetricsDashboard searchResponse={searchResponse} />
 
                     <div className="log-list">
-                        {results.map(log => (
+                        {searchResponse.logs.map(log => (
                             <LogEntry key={log.id} log={log} />
                         ))}
                     </div>
@@ -187,38 +143,82 @@ function LogSearch({ filters, setFilters }) {
                         </button>
 
                         <div className="page-numbers">
-                            {page > 2 && totalPages > 5 && <span>...</span>}
+                            {(() => {
+                                const totalPages = searchResponse.totalPages;
+                                const currentPage = page;
+                                const pageNumbers = [];
 
-                            {pageNumbers.map(pageNum => (
-                                <button
-                                    key={pageNum}
-                                    onClick={() => goToPage(pageNum)}
-                                    disabled={loading}
-                                    className={pageNum === page ? 'active' : ''}
-                                >
-                                    {pageNum + 1}
-                                </button>
-                            ))}
+                                // Calculate range of pages to show (5 pages centered on current)
+                                let startPage = Math.max(0, currentPage - 2);
+                                let endPage = Math.min(totalPages - 1, startPage + 4);
 
-                            {page < totalPages - 3 && totalPages > 5 && <span>...</span>}
+                                // Adjust if we're near the end
+                                if (endPage - startPage < 4) {
+                                    startPage = Math.max(0, endPage - 4);
+                                }
+
+                                // Show ellipsis at start if needed
+                                if (startPage > 0) {
+                                    pageNumbers.push(
+                                        <button key={0} onClick={() => goToPage(0)} disabled={loading}>
+                                            1
+                                        </button>
+                                    );
+                                    if (startPage > 1) {
+                                        pageNumbers.push(<span key="ellipsis-start">...</span>);
+                                    }
+                                }
+
+                                // Show page numbers
+                                for (let i = startPage; i <= endPage; i++) {
+                                    pageNumbers.push(
+                                        <button
+                                            key={i}
+                                            onClick={() => goToPage(i)}
+                                            disabled={loading}
+                                            className={i === currentPage ? 'active' : ''}
+                                        >
+                                            {i + 1}
+                                        </button>
+                                    );
+                                }
+
+                                // Show ellipsis at end if needed
+                                if (endPage < totalPages - 1) {
+                                    if (endPage < totalPages - 2) {
+                                        pageNumbers.push(<span key="ellipsis-end">...</span>);
+                                    }
+                                    pageNumbers.push(
+                                        <button
+                                            key={totalPages - 1}
+                                            onClick={() => goToPage(totalPages - 1)}
+                                            disabled={loading}
+                                        >
+                                            {totalPages}
+                                        </button>
+                                    );
+                                }
+
+                                return pageNumbers;
+                            })()}
                         </div>
 
                         <button
                             onClick={() => goToPage(page + 1)}
-                            disabled={page >= totalPages - 1 || loading}
+                            disabled={page >= searchResponse.totalPages - 1 || loading}
                         >
                             Next
                         </button>
                         <button
-                            onClick={() => goToPage(totalPages - 1)}
-                            disabled={page >= totalPages - 1 || loading}
+                            onClick={() => goToPage(searchResponse.totalPages - 1)}
+                            disabled={page >= searchResponse.totalPages - 1 || loading}
                         >
                             Last
                         </button>
                     </div>
 
                     <div className="pagination-summary">
-                        Showing {page * pageSize + 1} - {Math.min((page + 1) * pageSize, totalElements)} of {totalElements.toLocaleString()}
+                        Showing {page * pageSize + 1} - {Math.min((page + 1) * pageSize, searchResponse.totalElements)} of {searchResponse.totalElements.toLocaleString()}
                     </div>
                 </>
             )}
@@ -266,7 +266,7 @@ function LogSearch({ filters, setFilters }) {
                 </div>
             )}
 
-            {searchExecuted && results.length === 0 && (
+            {searchExecuted && searchResponse && searchResponse.logs.length === 0 && (
                 <div className="empty-state">
                     <p>No logs found matching your criteria</p>
                     <span>Try adjusting your filters or expanding the time range</span>

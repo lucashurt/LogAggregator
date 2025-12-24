@@ -6,7 +6,7 @@ import FilterPanel from "./components/FilterPanel";
 import LogSearch from "./components/LogSearch";
 
 function App() {
-    const [view, setView] = useState('search');
+    const [view, setView] = useState('stream');
     const [filters, setFilters] = useState({
         serviceId: '',
         level: '',

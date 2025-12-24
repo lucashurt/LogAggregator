@@ -1,45 +1,54 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 
-function MetricsDashboard({ logs }) {
-    const metrics = useMemo(() => {
-        const levelCounts = logs.reduce((acc, log) => {
-            acc[log.level] = (acc[log.level] || 0) + 1;
-            return acc;
-        }, {});
-
-        const serviceCounts = logs.reduce((acc, log) => {
-            acc[log.serviceId] = (acc[log.serviceId] || 0) + 1;
-            return acc;
-        }, {});
-
-        return { levelCounts, serviceCounts };
-    }, [logs]);
+function MetricsDashboard({ searchResponse }) {
+    // Use metrics from the search response (aggregated across all results)
+    // Not just the current page
+    const { levelCounts, serviceCounts, searchTimeMs, totalElements } = searchResponse;
 
     return (
         <div className="metrics-dashboard">
             <div className="metric-card">
-                <h4>Total Logs</h4>
-                <span className="metric-value">{logs.length}</span>
+                <h4>Page Logs</h4>
+                <span className="metric-value">{totalElements.toLocaleString()}</span>
+            </div>
+
+            <div className="metric-card">
+                <h4>Search Time</h4>
+                <span className="metric-value">{searchTimeMs}ms</span>
             </div>
 
             <div className="metric-card">
                 <h4>Errors</h4>
                 <span className="metric-value error">
-                    {metrics.levelCounts.ERROR || 0}
+                    {levelCounts.ERROR || 0}
                 </span>
             </div>
 
             <div className="metric-card">
                 <h4>Warnings</h4>
                 <span className="metric-value warning">
-                    {metrics.levelCounts.WARNING || 0}
+                    {levelCounts.WARNING || 0}
+                </span>
+            </div>
+
+            <div className="metric-card">
+                <h4>Info Logs</h4>
+                <span className="metric-value">
+                    {levelCounts.INFO || 0}
+                </span>
+            </div>
+
+            <div className="metric-card">
+                <h4>Debug Logs</h4>
+                <span className="metric-value">
+                    {levelCounts.DEBUG || 0}
                 </span>
             </div>
 
             <div className="metric-card">
                 <h4>Services</h4>
                 <span className="metric-value">
-                    {Object.keys(metrics.serviceCounts).length}
+                    {Object.keys(serviceCounts).length}
                 </span>
             </div>
         </div>

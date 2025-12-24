@@ -16,8 +16,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
@@ -26,7 +28,7 @@ public class LogController {
 
     private final LogProducer logProducer;
     private final CachedElasticsearchService cachedElasticsearchService;
-    private final LogPostgresSearchService postgresSearchService; // Keep as fallback
+    private final LogPostgresSearchService postgresSearchService;
 
     public LogController(
             LogProducer logProducer,
@@ -52,7 +54,7 @@ public class LogController {
     }
 
     /**
-     * Search logs - NOW USING ELASTICSEARCH!
+     * Search logs - Using Elasticsearch with fallback to PostgreSQL
      */
     @GetMapping("/search")
     public ResponseEntity<LogSearchResponse> searchLog(
@@ -72,12 +74,15 @@ public class LogController {
         try {
             // Use Elasticsearch for search
             LogSearchResponse response = cachedElasticsearchService.searchWithCache(request);
-            log.info("Search completed via Elasticsearch: found {} results", response.totalElements());
+            log.info("Search completed via Elasticsearch: found {} results in {}ms",
+                    response.totalElements(), response.searchTimeMs());
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             // Fallback to PostgreSQL if Elasticsearch fails
             log.warn("Elasticsearch search failed, falling back to PostgreSQL: {}", e.getMessage());
+
+            long startTimeMs = System.currentTimeMillis();
 
             Page<com.example.logaggregator.logs.models.LogEntry> postgresResults =
                     postgresSearchService.search(request);
@@ -87,12 +92,21 @@ public class LogController {
                     .map(this::toResponse)
                     .toList();
 
+            // Calculate metrics from current page results (best we can do in fallback)
+            Map<String, Long> levelCounts = calculateLevelCounts(postgresResults.getContent());
+            Map<String, Long> serviceCounts = calculateServiceCounts(postgresResults.getContent());
+
+            long searchTimeMs = System.currentTimeMillis() - startTimeMs;
+
             LogSearchResponse response = new LogSearchResponse(
                     responses,
                     postgresResults.getTotalElements(),
                     postgresResults.getTotalPages(),
                     postgresResults.getNumber(),
-                    postgresResults.getSize()
+                    postgresResults.getSize(),
+                    searchTimeMs,
+                    levelCounts,
+                    serviceCounts
             );
 
             return ResponseEntity.ok(response);
@@ -110,5 +124,21 @@ public class LogController {
                 logEntry.getMetadata(),
                 logEntry.getCreatedAt()
         );
+    }
+
+    private Map<String, Long> calculateLevelCounts(List<com.example.logaggregator.logs.models.LogEntry> logs) {
+        return logs.stream()
+                .collect(Collectors.groupingBy(
+                        log -> log.getLevel().toString(),
+                        Collectors.counting()
+                ));
+    }
+
+    private Map<String, Long> calculateServiceCounts(List<com.example.logaggregator.logs.models.LogEntry> logs) {
+        return logs.stream()
+                .collect(Collectors.groupingBy(
+                        com.example.logaggregator.logs.models.LogEntry::getServiceId,
+                        Collectors.counting()
+                ));
     }
 }

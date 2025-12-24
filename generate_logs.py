@@ -6,8 +6,8 @@ from datetime import datetime, timezone, timedelta
 
 # Configuration
 API_URL = "http://localhost:8080/api/v1/logs/batch"
-TOTAL_LOGS = 10000
-BATCH_SIZE = 500  # Send 500 logs per request to avoid timeouts
+TOTAL_LOGS = 100000
+BATCH_SIZE = 1000  # Send 500 logs per request to avoid timeouts
 
 # Time Range Configuration
 # Options: 'last_hour', 'last_6_hours', 'last_24_hours', 'last_week'

@@ -54,3 +54,4 @@ public class LogElasticsearchSpecification {
         return finalCriteria;
     }
 }
+
