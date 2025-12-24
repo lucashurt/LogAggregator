@@ -64,6 +64,7 @@ public class LogElasticsearchSearchService {
             searchQuery = new CriteriaQuery(criteria);
             searchQuery.setPageable(pageable);
         }
+        searchQuery.setTrackTotalHits(true);
 
         SearchHits<LogDocument> searchHits = elasticsearchOperations.search(
                 searchQuery,
