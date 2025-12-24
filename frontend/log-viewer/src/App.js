@@ -1,5 +1,5 @@
 import './App.css';
-import {useEffect, useState} from "react";
+import {useEffect, useState, useRef} from "react";
 import websocketService from "./services/websocket";
 import LogStream from "./components/LogStream";
 import FilterPanel from "./components/FilterPanel";
@@ -20,9 +20,13 @@ function App() {
     const [realtimeLogs, setRealtimeLogs] = useState([]);
     const [wsConnected, setWsConnected] = useState(false);
 
+    // Pause/Resume functionality
+    const [isPaused, setIsPaused] = useState(false);
+    const [bufferedLogs, setBufferedLogs] = useState([]);
+    const pausedLogsRef = useRef([]);
+
     const REALTIME_BUFFER_SIZE = 1000;
 
-    // FIX: Clear filters when switching views to prevent bleed
     const handleViewChange = (newView) => {
         if (newView !== view) {
             console.log(`🔄 Switching from ${view} to ${newView} - clearing filters`);
@@ -35,14 +39,64 @@ function App() {
                 query: ''
             });
             setView(newView);
+
+            // Reset pause state when switching to stream
+            if (newView === 'stream') {
+                setIsPaused(false);
+                setBufferedLogs([]);
+                pausedLogsRef.current = [];
+            }
         }
+    };
+
+    const togglePause = () => {
+        setIsPaused(prev => !prev);
+
+        if (isPaused) {
+            console.log(`▶️ Resuming stream. ${pausedLogsRef.current.length} logs buffered while paused.`);
+        } else {
+            console.log('⏸️ Stream paused. Logs will buffer in background.');
+            pausedLogsRef.current = [];
+            setBufferedLogs([]);
+        }
+    };
+
+    const resumeWithBuffered = () => {
+        console.log(`▶️ Resuming and adding ${pausedLogsRef.current.length} buffered logs`);
+        setRealtimeLogs(prev => {
+            const combined = [...pausedLogsRef.current, ...prev];
+            return combined.slice(0, REALTIME_BUFFER_SIZE);
+        });
+        setIsPaused(false);
+        setBufferedLogs([]);
+        pausedLogsRef.current = [];
+    };
+
+    const resumeDiscardBuffered = () => {
+        console.log(`▶️ Resuming and discarding ${pausedLogsRef.current.length} buffered logs`);
+        setIsPaused(false);
+        setBufferedLogs([]);
+        pausedLogsRef.current = [];
+    };
+
+    const clearAndResume = () => {
+        console.log('🗑️ Clearing current logs and resuming fresh');
+        setRealtimeLogs([]);
+        setIsPaused(false);
+        setBufferedLogs([]);
+        pausedLogsRef.current = [];
     };
 
     useEffect(() => {
         websocketService.connect((newLog) => {
-            setRealtimeLogs(prevLogs => {
-                return [newLog, ...prevLogs].slice(0, REALTIME_BUFFER_SIZE);
-            });
+            if (isPaused) {
+                pausedLogsRef.current = [newLog, ...pausedLogsRef.current].slice(0, 500);
+                setBufferedLogs(pausedLogsRef.current);
+            } else {
+                setRealtimeLogs(prevLogs => {
+                    return [newLog, ...prevLogs].slice(0, REALTIME_BUFFER_SIZE);
+                });
+            }
         });
 
         setWsConnected(true);
@@ -50,7 +104,7 @@ function App() {
         return () => {
             websocketService.disconnect();
         }
-    }, []);
+    }, [isPaused]);
 
     return (
         <div className="app">
@@ -62,9 +116,25 @@ function App() {
                     </span>
 
                     {view === 'stream' && (
-                        <span className="log-count-badge">
-                            {realtimeLogs.length} / {REALTIME_BUFFER_SIZE}
-                        </span>
+                        <>
+                            <span className="log-count-badge">
+                                {realtimeLogs.length} / {REALTIME_BUFFER_SIZE}
+                            </span>
+
+                            <button
+                                className={`pause-btn ${isPaused ? 'paused' : 'live'}`}
+                                onClick={togglePause}
+                                title={isPaused ? "Resume stream" : "Pause stream"}
+                            >
+                                {isPaused ? 'Resume' : 'Pause'}
+                            </button>
+
+                            {isPaused && bufferedLogs.length > 0 && (
+                                <span className="buffer-indicator">
+                                    {bufferedLogs.length} buffered
+                                </span>
+                            )}
+                        </>
                     )}
 
                     <button
@@ -95,6 +165,11 @@ function App() {
                             logs={realtimeLogs}
                             filters={filters}
                             bufferSize={REALTIME_BUFFER_SIZE}
+                            isPaused={isPaused}
+                            bufferedCount={bufferedLogs.length}
+                            onResumeWithBuffered={resumeWithBuffered}
+                            onResumeDiscardBuffered={resumeDiscardBuffered}
+                            onClearAndResume={clearAndResume}
                         />
                     ) : (
                         <LogSearch

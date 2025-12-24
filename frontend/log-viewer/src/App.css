@@ -222,27 +222,45 @@ select:focus {
     background: rgba(47, 129, 247, 0.1);
     border: 1px solid rgba(47, 129, 247, 0.3);
     border-radius: 8px;
-    margin: 16px 24px;
+    margin-bottom: 15px;
     padding: 16px 20px;
+    width: 100%;
 }
 
-.info-content {
-    font-size: 13px;
-    line-height: 1.6;
+/* Stream info banner - styled layout */
+.stream-info-banner .info-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 
-.info-content strong {
-    color: var(--accent-blue);
-    display: block;
-    margin-bottom: 8px;
+.info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.info-label {
+    color: #667eea;
     font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
-.info-content p {
-    margin: 4px 0;
-    color: var(--text-primary);
+.info-text {
+    color: #b0b0b0;
+    font-size: 14px;
+    line-height: 1.5;
 }
 
+.highlight {
+    color: #a8b9ff;
+    font-weight: 600;
+    padding: 2px 6px;
+    background: rgba(102, 126, 234, 0.15);
+    border-radius: 3px;
+}
 /* ==================== Headers ==================== */
 .stream-header,
 .search-header {
@@ -638,3 +656,97 @@ select:focus {
     background: var(--bg-elevated);
 }
 
+/* Pause Banner - Match log stream width */
+.pause-banner {
+    background: rgba(102, 126, 234, 0.1);
+    border: 1px solid rgba(102, 126, 234, 0.3);
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 15px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.pause-banner.info {
+    background: rgba(74, 144, 226, 0.1);
+    border-color: rgba(74, 144, 226, 0.3);
+}
+
+.pause-info {
+    color: #e0e0e0;
+    margin-bottom: 15px;
+}
+
+.pause-info strong {
+    font-size: 16px;
+    display: block;
+    margin-bottom: 8px;
+    color: #fff;
+    font-weight: 600;
+}
+
+.pause-info p {
+    margin: 0;
+    color: #b0b0b0;
+    font-size: 14px;
+}
+
+.pause-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.resume-option {
+    padding: 10px 20px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 13px;
+    flex: 1;
+    min-width: 200px;
+    background: rgba(255, 255, 255, 0.05);
+    box-sizing: border-box;
+}
+
+.resume-option.primary {
+    background: rgba(102, 126, 234, 0.2);
+    border-color: #667eea;
+    color: #a8b9ff;
+}
+
+.resume-option.primary:hover {
+    background: rgba(102, 126, 234, 0.3);
+    border-color: #a8b9ff;
+    transform: translateY(-1px);
+}
+
+.resume-option.secondary {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.resume-option.secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.resume-option.danger {
+    background: rgba(220, 53, 69, 0.1);
+    border-color: #dc3545;
+    color: #ff6b7a;
+}
+
+.resume-option.danger:hover {
+    background: rgba(220, 53, 69, 0.2);
+    border-color: #ff6b7a;
+}
+
+/* Ensure log-stream children have consistent width */
+.log-stream > * {
+    width: 100%;
+    box-sizing: border-box;
+}
