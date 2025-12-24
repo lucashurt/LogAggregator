@@ -87,6 +87,41 @@ function LogSearch({ filters, setFilters }) {
         handleSearch(pageNum);
     };
 
+    // Calculate which page numbers to show
+    const getPageNumbers = () => {
+        const pages = [];
+        const maxPagesToShow = 5;
+
+        if (totalPages <= maxPagesToShow) {
+            // Show all pages if total is small
+            for (let i = 0; i < totalPages; i++) {
+                pages.push(i);
+            }
+        } else {
+            // Show pages around current page
+            let startPage = Math.max(0, page - 2);
+            let endPage = Math.min(totalPages - 1, page + 2);
+
+            // Adjust if we're near the start
+            if (page < 2) {
+                endPage = Math.min(totalPages - 1, maxPagesToShow - 1);
+            }
+
+            // Adjust if we're near the end
+            if (page > totalPages - 3) {
+                startPage = Math.max(0, totalPages - maxPagesToShow);
+            }
+
+            for (let i = startPage; i <= endPage; i++) {
+                pages.push(i);
+            }
+        }
+
+        return pages;
+    };
+
+    const pageNumbers = getPageNumbers();
+
     return (
         <div className="log-search">
             <div className="search-header">
@@ -152,24 +187,20 @@ function LogSearch({ filters, setFilters }) {
                         </button>
 
                         <div className="page-numbers">
-                            {page > 2 && <span>...</span>}
-                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                let pageNum = page - 2 + i;
-                                if (pageNum < 0) pageNum = i;
-                                if (pageNum >= totalPages) return null;
+                            {page > 2 && totalPages > 5 && <span>...</span>}
 
-                                return (
-                                    <button
-                                        key={pageNum}
-                                        onClick={() => goToPage(pageNum)}
-                                        disabled={loading}
-                                        className={pageNum === page ? 'active' : ''}
-                                    >
-                                        {pageNum + 1}
-                                    </button>
-                                );
-                            })}
-                            {page < totalPages - 3 && <span>...</span>}
+                            {pageNumbers.map(pageNum => (
+                                <button
+                                    key={pageNum}
+                                    onClick={() => goToPage(pageNum)}
+                                    disabled={loading}
+                                    className={pageNum === page ? 'active' : ''}
+                                >
+                                    {pageNum + 1}
+                                </button>
+                            ))}
+
+                            {page < totalPages - 3 && totalPages > 5 && <span>...</span>}
                         </div>
 
                         <button
