@@ -10,13 +10,16 @@ function LogSearch({ filters, setFilters }) {
     const [pageSize, setPageSize] = useState(100);
     const [searchExecuted, setSearchExecuted] = useState(false);
 
+    // NEW: Store initial search metadata separately (doesn't update on pagination)
+    const [initialSearchMetadata, setInitialSearchMetadata] = useState(null);
+
     // Convert datetime-local format to ISO format for backend
     const convertToISO = (datetimeLocal) => {
         if (!datetimeLocal) return null;
         return new Date(datetimeLocal).toISOString();
     };
 
-    const handleSearch = async (newPage = 0) => {
+    const handleSearch = async (newPage = 0, isNewSearch = true) => {
         setLoading(true);
         setPage(newPage);
 
@@ -42,7 +45,19 @@ function LogSearch({ filters, setFilters }) {
             setSearchResponse(data);
             setSearchExecuted(true);
 
-            console.log(`Found ${data.totalElements} total logs, showing page ${newPage + 1}/${data.totalPages}, search took ${data.searchTimeMs}ms`);
+            // CRITICAL FIX: Only update initial metadata on NEW searches, not pagination
+            if (isNewSearch) {
+                setInitialSearchMetadata({
+                    totalElements: data.totalElements,
+                    totalPages: data.totalPages,
+                    searchTimeMs: data.searchTimeMs,
+                    levelCounts: data.levelCounts,
+                    serviceCounts: data.serviceCounts
+                });
+                console.log(`NEW SEARCH: Found ${data.totalElements} total logs in ${data.searchTimeMs}ms`);
+            } else {
+                console.log(`Page ${newPage + 1} loaded (using cached metrics)`);
+            }
         } catch (error) {
             console.error('Search failed:', error);
             alert('Search failed. Check console for details.');
@@ -70,12 +85,23 @@ function LogSearch({ filters, setFilters }) {
     const handlePageSizeChange = (newSize) => {
         setPageSize(newSize);
         if (searchExecuted) {
-            handleSearch(0);
+            // This is a new search with different page size
+            handleSearch(0, true);
         }
     };
 
     const goToPage = (pageNum) => {
-        handleSearch(pageNum);
+        // This is just pagination, not a new search
+        handleSearch(pageNum, false);
+    };
+
+    // Use initial metadata for display (doesn't change on pagination)
+    const displayMetadata = initialSearchMetadata || {
+        totalElements: 0,
+        totalPages: 0,
+        searchTimeMs: 0,
+        levelCounts: {},
+        serviceCounts: {}
     };
 
     return (
@@ -88,9 +114,9 @@ function LogSearch({ filters, setFilters }) {
                     </p>
                     {searchExecuted && searchResponse && (
                         <span className="search-stats">
-                            {searchResponse.totalElements === 0
+                            {displayMetadata.totalElements === 0
                                 ? "No logs found"
-                                : `Found ${searchResponse.totalElements.toLocaleString()} logs in ${searchResponse.searchTimeMs}ms - Page ${page + 1} of ${searchResponse.totalPages}`
+                                : `Found ${displayMetadata.totalElements.toLocaleString()} logs in ${displayMetadata.searchTimeMs}ms - Page ${page + 1} of ${displayMetadata.totalPages}`
                             }
                         </span>
                     )}
@@ -112,7 +138,7 @@ function LogSearch({ filters, setFilters }) {
                         <option value={200}>200 / page</option>
                         <option value={500}>500 / page</option>
                     </select>
-                    <button onClick={() => handleSearch(0)} disabled={loading} className="search-btn">
+                    <button onClick={() => handleSearch(0, true)} disabled={loading} className="search-btn">
                         {loading ? 'Searching...' : 'Search'}
                     </button>
                 </div>
@@ -120,7 +146,13 @@ function LogSearch({ filters, setFilters }) {
 
             {searchExecuted && searchResponse && searchResponse.logs.length > 0 && (
                 <>
-                    <MetricsDashboard searchResponse={searchResponse} />
+                    {/* Pass initial metadata that doesn't change on pagination */}
+                    <MetricsDashboard
+                        levelCounts={displayMetadata.levelCounts}
+                        serviceCounts={displayMetadata.serviceCounts}
+                        totalElements={displayMetadata.totalElements}
+                        searchTimeMs={displayMetadata.searchTimeMs}
+                    />
 
                     <div className="log-list">
                         {searchResponse.logs.map(log => (
@@ -144,7 +176,7 @@ function LogSearch({ filters, setFilters }) {
 
                         <div className="page-numbers">
                             {(() => {
-                                const totalPages = searchResponse.totalPages;
+                                const totalPages = displayMetadata.totalPages;
                                 const currentPage = page;
                                 const pageNumbers = [];
 
@@ -205,20 +237,20 @@ function LogSearch({ filters, setFilters }) {
 
                         <button
                             onClick={() => goToPage(page + 1)}
-                            disabled={page >= searchResponse.totalPages - 1 || loading}
+                            disabled={page >= displayMetadata.totalPages - 1 || loading}
                         >
                             Next
                         </button>
                         <button
-                            onClick={() => goToPage(searchResponse.totalPages - 1)}
-                            disabled={page >= searchResponse.totalPages - 1 || loading}
+                            onClick={() => goToPage(displayMetadata.totalPages - 1)}
+                            disabled={page >= displayMetadata.totalPages - 1 || loading}
                         >
                             Last
                         </button>
                     </div>
 
                     <div className="pagination-summary">
-                        Showing {page * pageSize + 1} - {Math.min((page + 1) * pageSize, searchResponse.totalElements)} of {searchResponse.totalElements.toLocaleString()}
+                        Showing {page * pageSize + 1} - {Math.min((page + 1) * pageSize, displayMetadata.totalElements)} of {displayMetadata.totalElements.toLocaleString()}
                     </div>
                 </>
             )}
@@ -259,7 +291,7 @@ function LogSearch({ filters, setFilters }) {
                                 <p>Searches powered by Elasticsearch for millisecond response times</p>
                             </div>
                         </div>
-                        <button onClick={() => handleSearch(0)} className="search-btn-large">
+                        <button onClick={() => handleSearch(0, true)} className="search-btn-large">
                             Search All Logs
                         </button>
                     </div>
