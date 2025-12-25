@@ -27,8 +27,6 @@ public class LogElasticsearchIngestService {
         try{
             LogDocument logDocument = convertToLogDocument(logEntryRequest,postgresId);
             logElasticsearchRepository.save(logDocument);
-            log.debug("Indexed log to Elasticsearch: serviceId={}, traceId={}",
-                    logEntryRequest.serviceId(), logEntryRequest.traceId());
         }
         catch (Exception e){
             log.error("Failed to index log to Elasticsearch: serviceId={}, error={}",
@@ -62,7 +60,6 @@ public class LogElasticsearchIngestService {
             // Use saveAll for batch operations - Spring Data handles bulk behind the scenes
             logElasticsearchRepository.saveAll(documents);
 
-            log.info("Batch indexed {} logs to Elasticsearch", documents.size());
         }
         catch (Exception e){
             log.error("Failed to batch index logs to Elasticsearch: count={}, error={}",

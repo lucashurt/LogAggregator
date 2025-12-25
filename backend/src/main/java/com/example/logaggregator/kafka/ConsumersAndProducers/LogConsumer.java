@@ -41,9 +41,6 @@ public class LogConsumer {
             @Header(KafkaHeaders.OFFSET) List<Long> offsets) {
         long startTime = System.nanoTime();
 
-        log.debug("Received batch of {} logs from partition(s) {}",
-                requests.size(),
-                partitions.stream().distinct().toList());
 
         try{
             // 1. Critical Path: Write to PostgreSQL (We wait for this ensures data safety)
@@ -61,8 +58,7 @@ public class LogConsumer {
             });
 
             // Metrics
-            long duration = System.currentTimeMillis() - (startTime / 1_000_000); // convert nano to milli
-            double throughput = (requests.size() / (duration / 1000.0));
+            long duration = System.nanoTime() - startTime;
 
             CompletableFuture.runAsync(() -> {
                 websocketService.broadcastBatch(savedLogs);
@@ -71,8 +67,6 @@ public class LogConsumer {
             kafkaMetrics.recordBatchConsumed(requests.size());
             kafkaMetrics.recordConsumerBatchProcessingTime(startTime);
 
-            log.info("Batch processing complete: {} logs saved to Postgres (ES async) in {}ms",
-                    requests.size(), duration);
         }
         catch (Exception e){
             log.error("Error while processing logs from partition(s) {}: {}", partitions, e.getMessage());

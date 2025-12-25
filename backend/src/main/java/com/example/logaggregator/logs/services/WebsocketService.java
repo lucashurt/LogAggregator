@@ -40,7 +40,6 @@ public class WebsocketService {
             // Send entire batch as single message
             messagingTemplate.convertAndSend("/topic/logs-batch", responses);
 
-            log.debug("Broadcasted batch of {} logs via WebSocket", responses.size());
 
         } catch (Exception e) {
             log.error("Failed to broadcast log batch via WebSocket: {}", e.getMessage());
@@ -73,8 +72,6 @@ public class WebsocketService {
         try {
             LogEntryResponse response = toResponse(logEntry);
             messagingTemplate.convertAndSend("/topic/logs", response);
-            log.debug("Broadcasted log to WebSocket: id={}, serviceId={}",
-                    logEntry.getId(), logEntry.getServiceId());
         } catch (Exception e) {
             log.error("Failed to broadcast log via WebSocket: {}", e.getMessage());
         }

@@ -251,8 +251,6 @@ public class LogElasticsearchSearchService {
             }
         }
 
-        log.debug("Extracted aggregations: {} level buckets, {} service buckets",
-                levelCounts.size(), serviceCounts.size());
     }
 
     /**
@@ -316,10 +314,6 @@ public class LogElasticsearchSearchService {
                 pageable,
                 () -> totalHits
         );
-
-        log.info("Elasticsearch search executed: found {} results out of {} total",
-                page.getNumberOfElements(),
-                page.getTotalElements());
 
         return page;
     }
