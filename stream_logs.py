@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 # Configuration
 API_URL = "http://localhost:8080/api/v1/logs/batch"
-LOGS_PER_SECOND = 200
+LOGS_PER_SECOND = 500
 
 # Data Pools (reused from your existing script)
 SERVICES = ["auth-service", "payment-service", "notification-service", "user-service", "inventory-service", "shipping-service"]
