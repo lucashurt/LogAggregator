@@ -11,13 +11,16 @@ import java.util.Map;
 @Entity
 @Table(name = "log_entries", indexes = {
         @Index(name = "idx_timestamp", columnList = "timestamp"),
-        @Index(name = "idx_serviceId", columnList = "serviceId"),
-        @Index(name = "idx_level", columnList = "level")
 })
 @Data
 public class LogEntry {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "log_entry_seq")
+    @SequenceGenerator(
+            name = "log_entry_seq",
+            sequenceName = "log_entries_id_seq",
+            allocationSize = 50  // Fetch 50 IDs at once
+    )
     private Long id;
 
     @Column(nullable = false)

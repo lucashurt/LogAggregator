@@ -26,7 +26,7 @@ class WebSocketService {
             this.connected = true;
 
             // Subscribe to /topic/logs
-            this.client.subscribe('/topic/logs', (message) => {
+            this.client.subscribe('/topic/logs-batch', (message) => {
                 const log = JSON.parse(message.body);
                 onMessageCallback(log);
             });

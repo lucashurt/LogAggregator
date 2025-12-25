@@ -65,7 +65,7 @@ public class LogConsumer {
             double throughput = (requests.size() / (duration / 1000.0));
 
             CompletableFuture.runAsync(() -> {
-                savedLogs.forEach(websocketService :: broadcastLog);
+                websocketService.broadcastBatch(savedLogs);
             });
 
             kafkaMetrics.recordBatchConsumed(requests.size());

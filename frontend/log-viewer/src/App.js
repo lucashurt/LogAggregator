@@ -25,7 +25,7 @@ function App() {
     const [bufferedLogs, setBufferedLogs] = useState([]);
     const pausedLogsRef = useRef([]);
 
-    const REALTIME_BUFFER_SIZE = 1000;
+    const REALTIME_BUFFER_SIZE = 2500;
 
     const handleViewChange = (newView) => {
         if (newView !== view) {
