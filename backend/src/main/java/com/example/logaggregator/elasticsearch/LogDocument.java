@@ -3,10 +3,7 @@ package com.example.logaggregator.elasticsearch;
 import com.example.logaggregator.logs.models.LogStatus;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
-import org.springframework.data.elasticsearch.annotations.Document;
-import org.springframework.data.elasticsearch.annotations.Field;
-import org.springframework.data.elasticsearch.annotations.FieldType;
-import org.springframework.data.elasticsearch.annotations.Setting;
+import org.springframework.data.elasticsearch.annotations.*;
 
 import java.time.Instant;
 import java.util.Map;
@@ -19,7 +16,7 @@ public class LogDocument {
     @Id
     private String id;
 
-    @Field(type= FieldType.Date)
+    @Field(type = FieldType.Date, format = DateFormat.epoch_millis)
     private Instant timestamp;
 
     @Field(type = FieldType.Keyword)
