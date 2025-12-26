@@ -56,11 +56,6 @@ public class LogPostgresSearchService {
 
         Page<LogEntry> results = logRepository.findAll(spec,pageable);
 
-        log.info("Search executed: found {} results out of {} total",
-                results.getNumberOfElements(),
-                results.getTotalElements()
-        );
-
         return results;
     }
 }

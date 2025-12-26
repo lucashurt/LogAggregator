@@ -47,10 +47,6 @@ public class LogProducer {
     }
 
     public void sendLogBatch(List<LogEntryRequest> requests) {
-        long startTime = System.currentTimeMillis();
         requests.forEach(this::sendLog);
-        long duration = System.currentTimeMillis() - startTime;
-
-        log.info("Batch of {} logs queued for sending in {}ms", requests.size(), duration);
     }
 }

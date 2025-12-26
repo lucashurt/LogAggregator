@@ -1,0 +1,32 @@
+# Dependencies - installed fresh in container
+log-viewer/node_modules
+node_modules
+
+# Build output
+log-viewer/build
+build
+
+# Development files
+.git
+.gitignore
+*.md
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage

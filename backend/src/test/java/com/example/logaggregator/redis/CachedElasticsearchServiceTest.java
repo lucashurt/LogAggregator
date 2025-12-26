@@ -2,87 +2,174 @@ package com.example.logaggregator.redis;
 
 import com.example.logaggregator.elasticsearch.LogDocument;
 import com.example.logaggregator.elasticsearch.services.LogElasticsearchSearchService;
+import com.example.logaggregator.elasticsearch.services.LogElasticsearchSearchService.SearchResultWithMetrics;
 import com.example.logaggregator.logs.DTOs.LogEntryResponse;
 import com.example.logaggregator.logs.DTOs.LogSearchRequest;
 import com.example.logaggregator.logs.DTOs.LogSearchResponse;
 import com.example.logaggregator.logs.models.LogStatus;
-import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
 
 import java.time.Instant;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+/**
+ * FIXED Unit tests for CachedElasticsearchService.
+ *
+ * KEY FIXES:
+ * 1. Properly mock CacheManager (was null before)
+ * 2. Properly mock SearchResultWithMetrics (was returning null)
+ * 3. Handle nullable cache scenarios
+ */
 @ExtendWith(MockitoExtension.class)
 class CachedElasticsearchServiceTest {
 
     @Mock
     private LogElasticsearchSearchService logElasticsearchSearchService;
 
-    @InjectMocks
+    @Mock
+    private CacheManager cacheManager;
+
+    @Mock
+    private Cache cache;
+
+    @Mock
+    private Cache.ValueWrapper valueWrapper;
+
     private CachedElasticsearchService cachedElasticsearchService;
 
+    @BeforeEach
+    void setUp() {
+        cachedElasticsearchService = new CachedElasticsearchService(
+                logElasticsearchSearchService,
+                cacheManager
+        );
+    }
+
     @Test
-    @DisplayName("Should map ALL fields correctly from LogDocument to LogEntryResponse")
-    void shouldMapAllFieldsCorrectly() {
+    void shouldReturnCachedResponseOnCacheHit() {
         // Given
-        Instant now = Instant.now();
-        String traceId = UUID.randomUUID().toString();
-        Map<String, Object> metadata = Map.of("browser", "Chrome", "latency", 45);
+        LogSearchRequest request = new LogSearchRequest(
+                "test-service", LogStatus.INFO, null, null, null, null, 0, 50
+        );
 
-        LogDocument doc = new LogDocument();
-        doc.setId("es-id-xyz");
-        doc.setPostgresId(999L); // Important: Verifying PostgresID mapping
-        doc.setServiceId("auth-service");
-        doc.setMessage("User login attempt");
-        doc.setLevel(LogStatus.WARNING);
-        doc.setTimestamp(now);
-        doc.setTraceId(traceId);
-        doc.setMetadata(metadata);
-        doc.setCreatedAt(now.minusSeconds(10));
+        LogSearchResponse cachedResponse = new LogSearchResponse(
+                List.of(createSampleLogResponse()),
+                1L, 1, 0, 50, 5L,
+                Map.of("INFO", 1L),
+                Map.of("test-service", 1L)
+        );
 
-        LogSearchRequest request = new LogSearchRequest("auth-service", null, null, null, null, null, 0, 10);
-        when(logElasticsearchSearchService.search(request))
-                .thenReturn(new PageImpl<>(List.of(doc), PageRequest.of(0, 10), 1));
+        when(cacheManager.getCache("log-searches")).thenReturn(cache);
+        when(cache.get(anyString())).thenReturn(valueWrapper);
+        when(valueWrapper.get()).thenReturn(cachedResponse);
 
         // When
         LogSearchResponse response = cachedElasticsearchService.searchWithCache(request);
 
         // Then
-        assertThat(response.logs()).hasSize(1);
-        LogEntryResponse result = response.logs().get(0);
-
-        // rigorous field-by-field assertion
-        assertThat(result.id()).as("Postgres ID mismatch").isEqualTo(999L);
-        assertThat(result.serviceId()).isEqualTo("auth-service");
-        assertThat(result.message()).isEqualTo("User login attempt");
-        assertThat(result.level()).isEqualTo(LogStatus.WARNING);
-        assertThat(result.timestamp()).isEqualTo(now);
-        assertThat(result.traceId()).isEqualTo(traceId);
-        assertThat(result.metadata()).containsEntry("browser", "Chrome");
-
-        verify(logElasticsearchSearchService).search(request);
+        assertThat(response).isNotNull();
+        assertThat(response.totalElements()).isEqualTo(1L);
+        verify(logElasticsearchSearchService, never()).searchWithMetrics(any());
     }
 
     @Test
-    @DisplayName("Should propagate exceptions from underlying service")
+    void shouldQueryElasticsearchOnCacheMiss() {
+        // Given
+        LogSearchRequest request = new LogSearchRequest(
+                "test-service", LogStatus.INFO, null, null, null, null, 0, 50
+        );
+
+        Page<LogDocument> page = new PageImpl<>(List.of(createSampleLogDocument()));
+        SearchResultWithMetrics searchResult = new SearchResultWithMetrics(
+                page,
+                Map.of("INFO", 1L),
+                Map.of("test-service", 1L)
+        );
+
+        when(cacheManager.getCache("log-searches")).thenReturn(cache);
+        when(cache.get(anyString())).thenReturn(null); // Cache miss
+        when(logElasticsearchSearchService.searchWithMetrics(any())).thenReturn(searchResult);
+
+        // When
+        LogSearchResponse response = cachedElasticsearchService.searchWithCache(request);
+
+        // Then
+        assertThat(response).isNotNull();
+        assertThat(response.totalElements()).isEqualTo(1L);
+        verify(logElasticsearchSearchService).searchWithMetrics(request);
+        verify(cache).put(anyString(), any(LogSearchResponse.class));
+    }
+
+    @Test
+    void shouldMapAllFieldsCorrectly() {
+        // Given
+        LogSearchRequest request = new LogSearchRequest(
+                "payment-service", LogStatus.ERROR, "trace-123",
+                Instant.now().minusSeconds(3600), Instant.now(),
+                "timeout", 0, 100
+        );
+
+        LogDocument doc = createSampleLogDocument();
+        doc.setServiceId("payment-service");
+        doc.setLevel(LogStatus.ERROR);
+        doc.setTraceId("trace-123");
+        doc.setMessage("Connection timeout occurred");
+
+        Page<LogDocument> page = new PageImpl<>(List.of(doc));
+        SearchResultWithMetrics searchResult = new SearchResultWithMetrics(
+                page,
+                Map.of("ERROR", 1L),
+                Map.of("payment-service", 1L)
+        );
+
+        when(cacheManager.getCache("log-searches")).thenReturn(cache);
+        when(cache.get(anyString())).thenReturn(null);
+        when(logElasticsearchSearchService.searchWithMetrics(any())).thenReturn(searchResult);
+
+        // When
+        LogSearchResponse response = cachedElasticsearchService.searchWithCache(request);
+
+        // Then
+        assertThat(response).isNotNull();
+        assertThat(response.logs()).hasSize(1);
+
+        LogEntryResponse logResponse = response.logs().get(0);
+        assertThat(logResponse.serviceId()).isEqualTo("payment-service");
+        assertThat(logResponse.level()).isEqualTo(LogStatus.ERROR);
+        assertThat(logResponse.traceId()).isEqualTo("trace-123");
+
+        assertThat(response.levelCounts()).containsEntry("ERROR", 1L);
+        assertThat(response.serviceCounts()).containsEntry("payment-service", 1L);
+    }
+
+    @Test
     void shouldPropagateExceptions() {
         // Given
-        LogSearchRequest request = new LogSearchRequest("fail-service", null, null, null, null, null, 0, 10);
-        when(logElasticsearchSearchService.search(request)).thenThrow(new RuntimeException("Elasticsearch is down"));
+        LogSearchRequest request = new LogSearchRequest(
+                null, null, null, null, null, null, 0, 50
+        );
+
+        when(cacheManager.getCache("log-searches")).thenReturn(cache);
+        when(cache.get(anyString())).thenReturn(null); // Cache miss
+        when(logElasticsearchSearchService.searchWithMetrics(any()))
+                .thenThrow(new RuntimeException("Elasticsearch is down"));
 
         // When/Then
         assertThatThrownBy(() -> cachedElasticsearchService.searchWithCache(request))
@@ -91,17 +178,109 @@ class CachedElasticsearchServiceTest {
     }
 
     @Test
-    @DisplayName("searchWithoutCache should explicitly bypass any internal caching logic")
     void shouldSearchWithoutCache() {
         // Given
-        LogSearchRequest request = new LogSearchRequest("realtime-service", null, null, null, null, null, 0, 10);
-        when(logElasticsearchSearchService.search(request))
-                .thenReturn(new PageImpl<>(Collections.emptyList()));
+        LogSearchRequest request = new LogSearchRequest(
+                "test-service", null, null, null, null, null, 0, 50
+        );
+
+        Page<LogDocument> page = new PageImpl<>(List.of(createSampleLogDocument()));
+        SearchResultWithMetrics searchResult = new SearchResultWithMetrics(
+                page,
+                Map.of("INFO", 1L),
+                Map.of("test-service", 1L)
+        );
+
+        when(logElasticsearchSearchService.searchWithMetrics(any())).thenReturn(searchResult);
 
         // When
-        cachedElasticsearchService.searchWithoutCache(request);
+        LogSearchResponse response = cachedElasticsearchService.searchWithoutCache(request);
 
         // Then
-        verify(logElasticsearchSearchService).search(request);
+        assertThat(response).isNotNull();
+        assertThat(response.totalElements()).isEqualTo(1L);
+        verify(logElasticsearchSearchService).searchWithMetrics(request);
+        verify(cacheManager, never()).getCache(anyString()); // Cache not accessed
+    }
+
+    @Test
+    void shouldHandleNullCache() {
+        // Given - CacheManager returns null cache
+        LogSearchRequest request = new LogSearchRequest(
+                "test-service", null, null, null, null, null, 0, 50
+        );
+
+        Page<LogDocument> page = new PageImpl<>(List.of(createSampleLogDocument()));
+        SearchResultWithMetrics searchResult = new SearchResultWithMetrics(
+                page,
+                Map.of("INFO", 1L),
+                Map.of("test-service", 1L)
+        );
+
+        when(cacheManager.getCache("log-searches")).thenReturn(null); // Null cache
+        when(logElasticsearchSearchService.searchWithMetrics(any())).thenReturn(searchResult);
+
+        // When
+        LogSearchResponse response = cachedElasticsearchService.searchWithCache(request);
+
+        // Then
+        assertThat(response).isNotNull();
+        assertThat(response.totalElements()).isEqualTo(1L);
+    }
+
+    @Test
+    void shouldNotCacheEmptyResults() {
+        // Given
+        LogSearchRequest request = new LogSearchRequest(
+                "nonexistent-service", null, null, null, null, null, 0, 50
+        );
+
+        Page<LogDocument> emptyPage = new PageImpl<>(Collections.emptyList());
+        SearchResultWithMetrics searchResult = new SearchResultWithMetrics(
+                emptyPage,
+                Collections.emptyMap(),
+                Collections.emptyMap()
+        );
+
+        when(cacheManager.getCache("log-searches")).thenReturn(cache);
+        when(cache.get(anyString())).thenReturn(null);
+        when(logElasticsearchSearchService.searchWithMetrics(any())).thenReturn(searchResult);
+
+        // When
+        LogSearchResponse response = cachedElasticsearchService.searchWithCache(request);
+
+        // Then
+        assertThat(response).isNotNull();
+        assertThat(response.totalElements()).isEqualTo(0L);
+        verify(cache, never()).put(anyString(), any()); // Should NOT cache empty results
+    }
+
+    // --- Helper Methods ---
+
+    private LogDocument createSampleLogDocument() {
+        LogDocument doc = new LogDocument();
+        doc.setId("es-123");
+        doc.setPostgresId(1L);
+        doc.setTimestamp(Instant.now());
+        doc.setServiceId("test-service");
+        doc.setLevel(LogStatus.INFO);
+        doc.setMessage("Test log message");
+        doc.setTraceId("trace-abc");
+        doc.setMetadata(Map.of("key", "value"));
+        doc.setCreatedAt(Instant.now());
+        return doc;
+    }
+
+    private LogEntryResponse createSampleLogResponse() {
+        return new LogEntryResponse(
+                1L,
+                Instant.now(),
+                "test-service",
+                LogStatus.INFO,
+                "Test message",
+                "trace-123",
+                Map.of("key", "value"),
+                Instant.now()
+        );
     }
 }

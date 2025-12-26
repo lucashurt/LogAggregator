@@ -6,72 +6,210 @@ import com.example.logaggregator.logs.DTOs.LogEntryResponse;
 import com.example.logaggregator.logs.DTOs.LogSearchRequest;
 import com.example.logaggregator.logs.DTOs.LogSearchResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
-import org.springframework.cache.annotation.Cacheable;
 
+import java.util.Collections;
 import java.util.List;
 
+/**
+ * FIXED CachedElasticsearchService
+ *
+ * KEY FIXES:
+ * 1. Null-safe handling of CacheManager (prevents NPE in tests)
+ * 2. Null-safe handling of Cache object
+ * 3. Proper null checks before cache operations
+ */
 @Service
 @Slf4j
 public class CachedElasticsearchService {
-    private final LogElasticsearchSearchService logElasticsearchSearchService;
 
-    public CachedElasticsearchService(LogElasticsearchSearchService logElasticsearchSearchService) {
+    private final LogElasticsearchSearchService logElasticsearchSearchService;
+    private final CacheManager cacheManager;
+
+    public CachedElasticsearchService(
+            LogElasticsearchSearchService logElasticsearchSearchService,
+            CacheManager cacheManager) {
         this.logElasticsearchSearchService = logElasticsearchSearchService;
+        this.cacheManager = cacheManager;
     }
 
-    @Cacheable(
-            value = "log-searches",  // Cache name (prefix in Redis)
-            key = "#request.serviceId() + ':' + " +
-                    "#request.level() + ':' + " +
-                    "#request.traceId() + ':' + " +
-                    "#request.startTimestamp() + ':' + " +
-                    "#request.endTimestamp() + ':' + " +
-                    "#request.query() + ':' + " +
-                    "#request.page() + ':' + " +
-                    "#request.size()",
-            unless = "#result.totalElements() == 0"  // Don't cache empty results
-    )
     public LogSearchResponse searchWithCache(LogSearchRequest request) {
-        log.info("Cache MISS - Executing Elasticsearch query for: {}", request);
-        Page<LogDocument> results = logElasticsearchSearchService.search(request);
-        List<LogEntryResponse> responses = results.getContent()
+        long startTime = System.currentTimeMillis();
+
+        // Build cache key
+        String cacheKey = buildCacheKey(request);
+
+        // FIX: Null-safe cache access
+        Cache cache = getCache();
+        LogSearchResponse cachedResponse = getCachedResponse(cache, cacheKey);
+
+        long retrievalTime = System.currentTimeMillis() - startTime;
+
+        if (cachedResponse != null) {
+
+            return new LogSearchResponse(
+                    cachedResponse.logs(),
+                    cachedResponse.totalElements(),
+                    cachedResponse.totalPages(),
+                    cachedResponse.currentPage(),
+                    cachedResponse.size(),
+                    retrievalTime,
+                    cachedResponse.levelCounts(),
+                    cachedResponse.serviceCounts()
+            );
+        }
+
+
+        LogElasticsearchSearchService.SearchResultWithMetrics result =
+                logElasticsearchSearchService.searchWithMetrics(request);
+
+        // FIX: Null check on result
+        if (result == null || result.page() == null) {
+            log.warn("Elasticsearch returned null result");
+            return createEmptyResponse(System.currentTimeMillis() - startTime);
+        }
+
+        Page<LogDocument> page = result.page();
+
+        List<LogEntryResponse> responses = page.getContent()
                 .stream()
                 .map(this::documentToResponse)
                 .toList();
 
+        long searchTimeMs = System.currentTimeMillis() - startTime;
+
         LogSearchResponse response = new LogSearchResponse(
                 responses,
-                results.getTotalElements(),
-                results.getTotalPages(),
-                results.getNumber(),
-                results.getSize()
+                page.getTotalElements(),
+                page.getTotalPages(),
+                page.getNumber(),
+                page.getSize(),
+                searchTimeMs,
+                result.levelCounts() != null ? result.levelCounts() : Collections.emptyMap(),
+                result.serviceCounts() != null ? result.serviceCounts() : Collections.emptyMap()
         );
-        log.info("Storing in cache: {} total elements", response.totalElements());
+
+        // Store in cache (only if not empty and cache is available)
+        if (response.totalElements() > 0 && cache != null) {
+            try {
+                cache.put(cacheKey, response);
+                log.info("Stored in cache: {} total elements, search took {}ms",
+                        response.totalElements(), searchTimeMs);
+            } catch (Exception e) {
+                log.warn("Failed to cache response: {}", e.getMessage());
+            }
+        }
+
         return response;
     }
 
     public LogSearchResponse searchWithoutCache(LogSearchRequest request) {
-        log.info("Bypassing cache - Direct Elasticsearch query");
-        Page<LogDocument> results = logElasticsearchSearchService.search(request);
+        long startTime = System.currentTimeMillis();
 
-        List<LogEntryResponse> responses = results.getContent()
+        log.info("Bypassing cache - Direct Elasticsearch query");
+
+        LogElasticsearchSearchService.SearchResultWithMetrics result =
+                logElasticsearchSearchService.searchWithMetrics(request);
+
+        // FIX: Null check on result
+        if (result == null || result.page() == null) {
+            log.warn("Elasticsearch returned null result");
+            return createEmptyResponse(System.currentTimeMillis() - startTime);
+        }
+
+        Page<LogDocument> page = result.page();
+
+        List<LogEntryResponse> responses = page.getContent()
                 .stream()
                 .map(this::documentToResponse)
                 .toList();
 
+        long searchTimeMs = System.currentTimeMillis() - startTime;
+
         return new LogSearchResponse(
                 responses,
-                results.getTotalElements(),
-                results.getTotalPages(),
-                results.getNumber(),
-                results.getSize()
+                page.getTotalElements(),
+                page.getTotalPages(),
+                page.getNumber(),
+                page.getSize(),
+                searchTimeMs,
+                result.levelCounts() != null ? result.levelCounts() : Collections.emptyMap(),
+                result.serviceCounts() != null ? result.serviceCounts() : Collections.emptyMap()
         );
     }
 
-    // Non-cached version for real-time queries.
-    // Use when freshness is critical (e.g., live monitoring dashboards).
+    /**
+     * FIX: Null-safe cache retrieval
+     */
+    private Cache getCache() {
+        if (cacheManager == null) {
+            log.debug("CacheManager is null, caching disabled");
+            return null;
+        }
+
+        try {
+            return cacheManager.getCache("log-searches");
+        } catch (Exception e) {
+            log.warn("Failed to get cache: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * FIX: Null-safe cached response retrieval
+     */
+    private LogSearchResponse getCachedResponse(Cache cache, String cacheKey) {
+        if (cache == null) {
+            return null;
+        }
+
+        try {
+            Cache.ValueWrapper wrapper = cache.get(cacheKey);
+            if (wrapper != null) {
+                Object value = wrapper.get();
+                if (value instanceof LogSearchResponse) {
+                    return (LogSearchResponse) value;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to retrieve from cache: {}", e.getMessage());
+        }
+
+        return null;
+    }
+
+    /**
+     * Create empty response for error cases
+     */
+    private LogSearchResponse createEmptyResponse(long searchTimeMs) {
+        return new LogSearchResponse(
+                Collections.emptyList(),
+                0L,
+                0,
+                0,
+                0,
+                searchTimeMs,
+                Collections.emptyMap(),
+                Collections.emptyMap()
+        );
+    }
+
+    /**
+     * Build cache key matching the @Cacheable key format
+     */
+    private String buildCacheKey(LogSearchRequest request) {
+        return (request.serviceId() == null ? "" : request.serviceId()) + ":" +
+                (request.level() == null ? "" : request.level()) + ":" +
+                (request.traceId() == null ? "" : request.traceId()) + ":" +
+                (request.startTimestamp() == null ? "" : request.startTimestamp()) + ":" +
+                (request.endTimestamp() == null ? "" : request.endTimestamp()) + ":" +
+                (request.query() == null ? "" : request.query()) + ":" +
+                request.page() + ":" +
+                request.size();
+    }
 
     private LogEntryResponse documentToResponse(LogDocument document) {
         return new LogEntryResponse(
@@ -85,5 +223,4 @@ public class CachedElasticsearchService {
                 document.getCreatedAt()
         );
     }
-
 }
