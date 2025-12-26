@@ -49,8 +49,6 @@ public class CachedElasticsearchService {
         long retrievalTime = System.currentTimeMillis() - startTime;
 
         if (cachedResponse != null) {
-            // Cache HIT
-            log.info("Cache HIT - Retrieved in {}ms", retrievalTime);
 
             return new LogSearchResponse(
                     cachedResponse.logs(),
@@ -64,8 +62,6 @@ public class CachedElasticsearchService {
             );
         }
 
-        // Cache MISS - execute Elasticsearch query
-        log.info("Cache MISS - Executing Elasticsearch query for: {}", request);
 
         LogElasticsearchSearchService.SearchResultWithMetrics result =
                 logElasticsearchSearchService.searchWithMetrics(request);

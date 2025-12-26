@@ -36,15 +36,10 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Optimized Elasticsearch search service that computes aggregations server-side.
+ * FIXED Elasticsearch search service with proper aggregation handling.
  *
- * KEY OPTIMIZATION: Uses a single query with Elasticsearch aggregations instead of
- * fetching documents and counting in Java. This reduces:
- * - Network overhead (no second query)
- * - Memory usage (no loading 1000 docs into JVM)
- * - CPU usage (aggregation computed by Elasticsearch, not Java)
- *
- * Performance improvement: ~60-80% faster for searches with metrics.
+ * KEY FIX: Aggregations are now properly extracted and logged.
+ * The counts represent the TOTAL across all matching documents, not just the current page.
  */
 @Slf4j
 @Service
@@ -63,8 +58,8 @@ public class LogElasticsearchSearchService {
     }
 
     /**
-     * Optimized search with metrics using Elasticsearch aggregations.
-     * Single query computes both paginated results AND aggregation counts.
+     * Search with metrics using Elasticsearch aggregations.
+     * Aggregations compute totals across ALL matching documents, not just the current page.
      */
     public SearchResultWithMetrics searchWithMetrics(LogSearchRequest request) {
         validateTimeRange(request.startTimestamp(), request.endTimestamp());
@@ -86,7 +81,6 @@ public class LogElasticsearchSearchService {
         );
 
         long queryTime = System.currentTimeMillis() - queryStart;
-        log.debug("Elasticsearch query executed in {}ms", queryTime);
 
         // Extract paginated results
         List<LogDocument> documents = searchHits.getSearchHits().stream()
@@ -105,13 +99,21 @@ public class LogElasticsearchSearchService {
         Map<String, Long> levelCounts = new HashMap<>();
         Map<String, Long> serviceCounts = new HashMap<>();
 
-        try {
-            extractAggregations(searchHits, levelCounts, serviceCounts);
-        } catch (Exception e) {
-            log.warn("Failed to extract aggregations, continuing without metrics: {}", e.getMessage());
+        // CRITICAL: Extract aggregations - these are TOTAL counts, not page counts
+        boolean aggregationsExtracted = extractAggregations(searchHits, levelCounts, serviceCounts);
+
+        if (!aggregationsExtracted) {
+            log.warn("⚠️ Aggregations not available - counts will be empty. " +
+                    "Check Elasticsearch query and index mappings.");
+        } else {
+            log.info("✅ Aggregations extracted: {} level types, {} services, totalHits={}",
+                    levelCounts.size(), serviceCounts.size(), totalHits);
+            log.debug("Level counts: {}", levelCounts);
+            log.debug("Service counts: {}", serviceCounts);
         }
 
-        log.info("Search completed: {} results of {} total in {}ms (with aggregations)",
+        log.info("Search completed: page {}/{}, {} results of {} total in {}ms",
+                page.getNumber() + 1, page.getTotalPages(),
                 page.getNumberOfElements(), page.getTotalElements(), queryTime);
 
         return new SearchResultWithMetrics(page, levelCounts, serviceCounts);
@@ -119,7 +121,6 @@ public class LogElasticsearchSearchService {
 
     /**
      * Build a NativeQuery with both search criteria and aggregations.
-     * This allows computing counts server-side in a single round trip.
      */
     private NativeQuery buildNativeQueryWithAggregations(LogSearchRequest request, Pageable pageable) {
         NativeQueryBuilder builder = NativeQuery.builder();
@@ -152,7 +153,7 @@ public class LogElasticsearchSearchService {
             hasFilters = true;
         }
 
-        // Time range filter - using .date() with epoch millis as strings
+        // Time range filter
         if (request.startTimestamp() != null && request.endTimestamp() != null) {
             boolBuilder.filter(QueryBuilders.range(r -> r
                     .date(d -> d
@@ -195,16 +196,17 @@ public class LogElasticsearchSearchService {
             builder.withQuery(QueryBuilders.matchAll().build()._toQuery());
         }
 
-        // Add aggregations for level and service counts
+        // CRITICAL: Add aggregations for TOTAL counts across all matching documents
+        // These are computed on the full result set, NOT just the current page
         builder.withAggregation(LEVEL_AGG_NAME, Aggregation.of(a -> a
                 .terms(t -> t
                         .field("level")
-                        .size(10))));  // We only have 4 log levels
+                        .size(10))));
 
         builder.withAggregation(SERVICE_AGG_NAME, Aggregation.of(a -> a
                 .terms(t -> t
                         .field("serviceId")
-                        .size(100))));  // Top 100 services
+                        .size(100))));
 
         // Set pagination and sorting
         builder.withPageable(pageable);
@@ -214,63 +216,99 @@ public class LogElasticsearchSearchService {
         return builder.build();
     }
 
-    private void extractAggregations(SearchHits<LogDocument> searchHits,
-                                     Map<String, Long> levelCounts,
-                                     Map<String, Long> serviceCounts) {
+    /**
+     * Extract aggregation results from SearchHits.
+     *
+     * @return true if aggregations were successfully extracted, false otherwise
+     */
+    private boolean extractAggregations(SearchHits<LogDocument> searchHits,
+                                        Map<String, Long> levelCounts,
+                                        Map<String, Long> serviceCounts) {
 
         if (!searchHits.hasAggregations()) {
-            log.debug("No aggregations in search response");
-            return;
+            log.warn("SearchHits.hasAggregations() returned false");
+            return false;
         }
 
-        ElasticsearchAggregations elasticsearchAggregations =
-                (ElasticsearchAggregations) searchHits.getAggregations();
+        try {
+            ElasticsearchAggregations elasticsearchAggregations =
+                    (ElasticsearchAggregations) searchHits.getAggregations();
 
-        if (elasticsearchAggregations == null) {
-            return;
-        }
-
-        // Get the list of aggregations
-        List<ElasticsearchAggregation> aggregationList = elasticsearchAggregations.aggregations();
-
-        // Iterate through the list to find our named aggregations
-        for (ElasticsearchAggregation elasticsearchAggregation : aggregationList) {
-            String aggName = elasticsearchAggregation.aggregation().getName();
-            Aggregate aggregate = elasticsearchAggregation.aggregation().getAggregate();
-
-            if (LEVEL_AGG_NAME.equals(aggName)) {
-                extractStringTermsAggregation(aggregate, levelCounts);
-            } else if (SERVICE_AGG_NAME.equals(aggName)) {
-                extractStringTermsAggregation(aggregate, serviceCounts);
+            if (elasticsearchAggregations == null) {
+                log.warn("getAggregations() returned null");
+                return false;
             }
-        }
 
+            List<ElasticsearchAggregation> aggregationList = elasticsearchAggregations.aggregations();
+
+            if (aggregationList == null || aggregationList.isEmpty()) {
+                log.warn("Aggregation list is null or empty");
+                return false;
+            }
+
+            log.debug("Found {} aggregations in response", aggregationList.size());
+
+            boolean foundLevel = false;
+            boolean foundService = false;
+
+            for (ElasticsearchAggregation elasticsearchAggregation : aggregationList) {
+                String aggName = elasticsearchAggregation.aggregation().getName();
+                Aggregate aggregate = elasticsearchAggregation.aggregation().getAggregate();
+
+                log.debug("Processing aggregation: name={}, type={}",
+                        aggName, aggregate._kind());
+
+                if (LEVEL_AGG_NAME.equals(aggName)) {
+                    foundLevel = extractStringTermsAggregation(aggregate, levelCounts, "level");
+                } else if (SERVICE_AGG_NAME.equals(aggName)) {
+                    foundService = extractStringTermsAggregation(aggregate, serviceCounts, "service");
+                }
+            }
+
+            return foundLevel || foundService;
+
+        } catch (Exception e) {
+            log.error("Failed to extract aggregations: {}", e.getMessage(), e);
+            return false;
+        }
     }
 
     /**
      * Extract bucket counts from a StringTerms aggregation.
+     *
+     * @return true if extraction was successful
      */
-    private void extractStringTermsAggregation(Aggregate aggregate, Map<String, Long> counts) {
+    private boolean extractStringTermsAggregation(Aggregate aggregate,
+                                                  Map<String, Long> counts,
+                                                  String fieldName) {
         try {
-            // Check if this is a string terms aggregation
             if (aggregate.isSterms()) {
                 StringTermsAggregate sterms = aggregate.sterms();
                 List<StringTermsBucket> buckets = sterms.buckets().array();
+
+                log.debug("Extracting {} buckets for {} aggregation", buckets.size(), fieldName);
 
                 for (StringTermsBucket bucket : buckets) {
                     String key = bucket.key().stringValue();
                     long docCount = bucket.docCount();
                     counts.put(key, docCount);
+                    log.trace("  {} = {}", key, docCount);
                 }
+
+                return !buckets.isEmpty();
+            } else {
+                log.warn("Aggregation for {} is not StringTerms, got: {}",
+                        fieldName, aggregate._kind());
+                return false;
             }
         } catch (Exception e) {
-            log.debug("Could not extract string terms aggregation: {}", e.getMessage());
+            log.error("Could not extract {} aggregation: {}", fieldName, e.getMessage());
+            return false;
         }
     }
 
     /**
      * Original search method without metrics (for backward compatibility).
-     * Uses CriteriaQuery which is simpler but doesn't support aggregations.
      */
     public Page<LogDocument> search(LogSearchRequest request) {
         validateTimeRange(request.startTimestamp(), request.endTimestamp());
@@ -303,13 +341,11 @@ public class LogElasticsearchSearchService {
 
         long totalHits = searchHits.getTotalHits();
 
-        Page<LogDocument> page = PageableExecutionUtils.getPage(
+        return PageableExecutionUtils.getPage(
                 documents,
                 pageable,
                 () -> totalHits
         );
-
-        return page;
     }
 
     private boolean hasNoCriteria(LogSearchRequest request) {
