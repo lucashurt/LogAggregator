@@ -214,12 +214,6 @@ public class LogElasticsearchSearchService {
         return builder.build();
     }
 
-    /**
-     * Extract aggregation results from SearchHits.
-     *
-     * IMPORTANT: ElasticsearchAggregations.aggregations() returns a List, not a Map.
-     * We need to iterate through the list and find aggregations by name.
-     */
     private void extractAggregations(SearchHits<LogDocument> searchHits,
                                      Map<String, Long> levelCounts,
                                      Map<String, Long> serviceCounts) {

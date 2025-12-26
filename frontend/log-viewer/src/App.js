@@ -88,13 +88,24 @@ function App() {
     };
 
     useEffect(() => {
-        websocketService.connect((newLog) => {
+        /**
+         * CRITICAL FIX: The WebSocket now receives BATCHES of logs (arrays)
+         * instead of individual logs. We need to handle this correctly.
+         */
+        websocketService.connect((newLogs) => {
+            // newLogs is now an ARRAY of logs from the batch endpoint
+            if (!Array.isArray(newLogs) || newLogs.length === 0) {
+                return;
+            }
+
             if (isPaused) {
-                pausedLogsRef.current = [newLog, ...pausedLogsRef.current].slice(0, 500);
+                // Add batch to paused buffer (newest first)
+                pausedLogsRef.current = [...newLogs, ...pausedLogsRef.current].slice(0, 500);
                 setBufferedLogs(pausedLogsRef.current);
             } else {
+                // Add batch to realtime logs (newest first)
                 setRealtimeLogs(prevLogs => {
-                    return [newLog, ...prevLogs].slice(0, REALTIME_BUFFER_SIZE);
+                    return [...newLogs, ...prevLogs].slice(0, REALTIME_BUFFER_SIZE);
                 });
             }
         });
