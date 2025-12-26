@@ -1,130 +1,284 @@
+# ==========================================
+# LOG AGGREGATOR - COMPLETE DOCKER COMPOSE
+# ==========================================
+# Full-stack deployment: Frontend, Backend, and all infrastructure
+#
+# USAGE:
+#   docker-compose up --build              # Start all services
+#   docker-compose up --build -d           # Start in background
+#   docker-compose --profile monitoring up # Include Prometheus/Grafana
+#   docker-compose down -v                 # Stop and remove volumes
+
 version: '3.8'
 
 services:
-  # ----------------------------
-  # Backend
-  # ----------------------------
+  # ==========================================
+  # FRONTEND - React Application
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: log-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - log-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # ==========================================
+  # BACKEND - Spring Boot Application
+  # ==========================================
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: log-backend
     ports:
       - "8080:8080"
     environment:
-      # Use variables from .env
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${POSTGRES_DB}?reWriteBatchedInserts=true
-
-      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
-      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
-
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - SPRING_ELASTICSEARCH_URIS=http://elasticsearch:9200
-      - SPRING_DATA_REDIS_HOST=redis
-      - SPRING_DATA_REDIS_PORT=6379
+      # Database Configuration
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/logaggregator
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-postgres}
+      
+      # Kafka Configuration
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      
+      # Elasticsearch Configuration
+      SPRING_ELASTICSEARCH_URIS: http://elasticsearch:9200
+      
+      # Redis Configuration
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      
+      # JVM Options (adjust based on available memory)
+      JAVA_OPTS: "-Xms512m -Xmx1024m"
     depends_on:
       postgres:
         condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
       kafka:
+        condition: service_started
+      elasticsearch:
         condition: service_healthy
       redis:
         condition: service_healthy
     networks:
       - log-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
 
-  # ----------------------------
-  # PostgreSQL
-  # ----------------------------
+  # ==========================================
+  # POSTGRESQL - Primary Data Store
+  # ==========================================
   postgres:
     image: postgres:15-alpine
     container_name: log-postgres
-    environment:
-      # Postgres image reads these to initialize the DB
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5433:5432"
+    environment:
+      POSTGRES_DB: logaggregator
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - log-network
+    restart: unless-stopped
     healthcheck:
-      # Healthcheck uses the variables too so it doesn't break if you change the user
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ... (Keep Elasticsearch, Redis, Kafka, Zookeeper as they were) ...
+  # ==========================================
+  # ELASTICSEARCH - Search Engine
+  # ==========================================
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     container_name: log-elasticsearch
+    ports:
+      - "9200:9200"
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-    ports:
-      - "9200:9200"
+      - cluster.name=log-cluster
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
     networks:
       - log-network
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 60s
 
+  # ==========================================
+  # REDIS - Caching Layer
+  # ==========================================
   redis:
     image: redis:7.2-alpine
     container_name: log-redis
     ports:
       - "6379:6379"
+    command: >
+      redis-server 
+      --appendonly yes 
+      --maxmemory 256mb 
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
     networks:
       - log-network
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # ==========================================
+  # ZOOKEEPER - Kafka Dependency
+  # ==========================================
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: log-zookeeper
+    ports:
+      - "2181:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
     networks:
       - log-network
+    restart: unless-stopped
 
+  # ==========================================
+  # KAFKA - Message Queue
+  # ==========================================
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: log-kafka
-    depends_on:
-      - zookeeper
     ports:
       - "9092:9092"
+      - "29092:29092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
+      # Performance tuning
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+    depends_on:
+      - zookeeper
+    volumes:
+      - kafka_data:/var/lib/kafka/data
     networks:
       - log-network
-    healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+    restart: unless-stopped
 
-volumes:
-  postgres_data:
-  elasticsearch_data:
+  # ==========================================
+  # PROMETHEUS - Metrics Collection (Optional)
+  # ==========================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: log-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    networks:
+      - log-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
 
+  # ==========================================
+  # GRAFANA - Metrics Visualization (Optional)
+  # ==========================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: log-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - log-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+# ==========================================
+# NETWORKS
+# ==========================================
 networks:
   log-network:
     driver: bridge
+
+# ==========================================
+# VOLUMES - Persistent Data
+# ==========================================
+volumes:
+  postgres_data:
+    name: log-postgres-data
+  elasticsearch_data:
+    name: log-elasticsearch-data
+  redis_data:
+    name: log-redis-data
+  zookeeper_data:
+    name: log-zookeeper-data
+  zookeeper_log:
+    name: log-zookeeper-log
+  kafka_data:
+    name: log-kafka-data
+  prometheus_data:
+    name: log-prometheus-data
+  grafana_data:
+    name: log-grafana-data

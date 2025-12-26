@@ -1,6 +1,13 @@
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 
+/**
+ * WebSocket Service for Real-Time Log Streaming
+ *
+ * ENVIRONMENT HANDLING:
+ * - Development: Direct connection to http://localhost:8080/ws
+ * - Production (Docker): Relative URL - nginx proxies /ws to backend
+ */
 class WebSocketService {
     constructor() {
         this.client = null;
@@ -9,16 +16,35 @@ class WebSocketService {
     }
 
     /**
+     * Get WebSocket URL based on environment.
+     * In Docker, nginx proxies /ws to backend.
+     * In development, connect directly to localhost:8080.
+     */
+    getWebSocketUrl() {
+        if (process.env.NODE_ENV === 'production') {
+            // Production (Docker): Use relative URL - nginx will proxy
+            const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+            return `${protocol}//${window.location.host}/ws`;
+        }
+        // Development: Connect directly to backend
+        return 'http://localhost:8080/ws';
+    }
+
+    /**
      * Connect to WebSocket and subscribe to log batches.
      *
      * @param {Function} onBatchCallback - Called with an ARRAY of logs when batch arrives
      */
     connect(onBatchCallback) {
-        const socket = new SockJS('http://localhost:8080/ws');
+        const wsUrl = this.getWebSocketUrl();
+        console.log(`🔌 Connecting to WebSocket: ${wsUrl}`);
+
+        const socket = new SockJS(wsUrl);
 
         this.client = new Client({
             webSocketFactory: () => socket,
             debug: (str) => {
+                // Only log important messages
                 if (str.includes('CONNECTED') || str.includes('ERROR')) {
                     console.log('[STOMP]', str);
                 }
@@ -33,7 +59,7 @@ class WebSocketService {
             this.connected = true;
 
             // Subscribe to batch endpoint
-            // CRITICAL FIX: Backend sends List<LogEntryResponse>, so message.body is an ARRAY
+            // CRITICAL: Backend sends List<LogEntryResponse>, so message.body is an ARRAY
             this.client.subscribe('/topic/logs-batch', (message) => {
                 try {
                     const logs = JSON.parse(message.body);
