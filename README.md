@@ -111,15 +111,15 @@ _Full-stack application with WebSocket streaming, React dashboard, Redis caching
 | Metric | Value |
 |--------|-------|
 | Logs Sent (API) | 15,100 |
-| Logs Persisted | 119,056 |
-| Actual Throughput | **3,941 logs/sec** |
-| Processing Efficiency | 788.5% |
+| Logs Persisted | 221,700 |
+| Actual Throughput | **7,352 logs/sec** |
+| Processing Efficiency | 1468.2% |
 | Consumer Lag | ✅ Keeping pace |
 
 **API Latency Percentiles:**
 | P50 | P95 | P99 | Max |
 |-----|-----|-----|-----|
-| 7ms | 26ms | 47ms | 173ms |
+| 6ms | 19ms | 52ms | 204ms |
 
 ---
 
@@ -128,18 +128,18 @@ _Full-stack application with WebSocket streaming, React dashboard, Redis caching
 #### Elasticsearch vs PostgreSQL Comparison
 | Query Type | PostgreSQL | Elasticsearch | Speedup |
 |------------|------------|---------------|---------|
-| **Full-Text Search** | 451ms | **92ms** | **4.9x** 🚀 |
-| **Exact Match** | 366ms | **104ms** | **3.5x** 🚀 |
-| **Range Query** | 456ms | **174ms** | **2.6x** 🚀 |
-| **Complex Query** | 339ms | **50ms** | **6.8x** 🚀 |
-| **Aggregations** | 575ms | **205ms** | **2.8x** 🚀 |
-| **Concurrent Load (100 users)** | 8,498ms | **456ms** | **18.6x** 🚀 |
+| **Full-Text Search** | 240ms | **18ms** | **13.3x** 🚀 |
+| **Exact Match** | 67ms | **10ms** | **6.7x** 🚀 |
+| **Range Query** | 114ms | **21ms** | **5.4x** 🚀 |
+| **Complex Query** | 91ms | **10ms** | **9.1x** 🚀 |
+| **Aggregations** | 212ms | **65ms** | **3.3x** 🚀 |
+| **Concurrent Load (100 users)** | 6,412ms | **308ms** | **20.8x** 🚀 |
 
 #### Batch Ingestion Performance
 | Metric | PostgreSQL | Elasticsearch |
 |--------|------------|---------------|
-| Batch Write Time | 25,376ms | 70,979ms |
-| **Throughput** | **19,704 logs/sec** | 7,044 logs/sec |
+| Batch Write Time | 27,851ms | 49,884ms |
+| **Throughput** | **19,704 logs/sec** | 10,023 logs/sec |
 
 ---
 
