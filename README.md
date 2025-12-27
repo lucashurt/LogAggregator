@@ -180,7 +180,7 @@ _Full-stack application with WebSocket streaming, React dashboard, Redis caching
 - Pause/Resume with background buffering
 - Expandable log details with metadata
   
-<img width="1400" height="673" alt="Screenshot 2025-12-26 at 10 36 56 AM" src="https://github.com/user-attachments/assets/50d142b1-ad3f-4d78-a730-eed4d61a58f7" />
+<img width="700" height="335" alt="Screenshot 2025-12-26 at 10 36 56 AM" src="https://github.com/user-attachments/assets/50d142b1-ad3f-4d78-a730-eed4d61a58f7" />
 
 ### Search View
 - Time range presets (1h, 6h, 24h, 7d)
