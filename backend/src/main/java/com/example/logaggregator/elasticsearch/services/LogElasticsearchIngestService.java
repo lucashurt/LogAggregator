@@ -69,7 +69,6 @@ public class LogElasticsearchIngestService {
 
     private LogDocument convertToLogDocument(LogEntryRequest request, Long postgresId) {
         LogDocument logDocument = new LogDocument();
-        logDocument.setId(UUID.randomUUID().toString());
         logDocument.setTimestamp(request.timestamp());
         logDocument.setServiceId(request.serviceId());
         logDocument.setLevel(request.level());

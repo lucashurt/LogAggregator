@@ -27,7 +27,7 @@ public class KafkaConfig {
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
 
-    @Value("${spring.kafka.consumer.max-poll-records:500}")
+    @Value("${spring.kafka.consumer.max-poll-records:2000}")
     private int maxPollRecords;
 
     @Value("${spring.kafka.listener.concurrency:3}")
@@ -76,7 +76,7 @@ public class KafkaConfig {
 
         config.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecords); // Process up to 500 records per poll
         config.put(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, 1024);
-        config.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, 500); // Max wait 500ms
+        config.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, 2000); // Max wait 500ms
         config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false); // Manual commit for better control
 
         return new DefaultKafkaConsumerFactory<>(config, new StringDeserializer(),
