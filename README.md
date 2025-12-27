@@ -373,6 +373,64 @@ Based on testing on standard hardware (MacBook Pro M1, 16GB):
 
 ---
 
+## ⚠️ Resource Requirements & Local Development
+
+### Hardware Recommendations
+
+| Environment | CPU | RAM | Notes |
+|-------------|-----|-----|-------|
+| **Minimum** | 4 cores | 12GB | Limited to ~500 logs/sec |
+| **Recommended** | 8 cores | 16GB | Sustains ~2,000 logs/sec |
+| **Full Throughput** | 8+ cores | 32GB | Achieves 10,000+ logs/sec |
+
+### Local Development Reality Check
+
+Running the complete stack (PostgreSQL, Elasticsearch, Kafka, Zookeeper, Redis, Backend, Frontend) on a single machine is **resource-intensive by design**. In production, these services would be distributed across multiple servers.
+
+**Expected CPU usage at various rates:**
+
+| Log Rate | Approximate CPU Usage | Notes |
+|----------|----------------------|-------|
+| 500/sec | 200-300% | Comfortable for development |
+| 1,000/sec | 400-500% | Noticeable system load |
+| 1,500/sec | 600-800% | Near-maximum for most laptops |
+| 2,000+/sec | 800%+ | May cause system slowdown |
+
+> **Note:** CPU percentages above 100% indicate multi-core utilization. 800% means 8 cores at full capacity.
+
+### Reducing Resource Usage for Development
+
+If your system struggles, try these options:
+
+1. **Lower the streaming rate:**
+```python
+   # In stream_logs.py
+   LOGS_PER_SECOND = 200  # Instead of 500
+```
+
+2. **Disable Elasticsearch during development:**
+   Comment out the ES indexing in `LogConsumer.java` if you only need PostgreSQL.
+
+3. **Increase Docker resource allocation:**
+   Docker Desktop → Settings → Resources → Increase CPU/Memory limits.
+
+4. **Run services selectively:**
+```bash
+   # Start only essential services
+   docker-compose up postgres kafka zookeeper redis backend -d
+```
+
+### Production Deployment
+
+For production workloads, deploy services on separate infrastructure:
+- **Elasticsearch:** Dedicated cluster (minimum 3 nodes recommended)
+- **Kafka:** Dedicated brokers with SSD storage
+- **PostgreSQL:** Managed database service (RDS, Cloud SQL)
+- **Application:** Horizontal scaling with load balancer
+
+---
+
+  
 ## Troubleshooting
 
 ### Python Scripts Can't Connect
