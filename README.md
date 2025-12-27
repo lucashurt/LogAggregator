@@ -138,7 +138,7 @@ _Full-stack application with WebSocket streaming, React dashboard, Redis caching
 #### Batch Ingestion Performance
 | Metric | PostgreSQL | Elasticsearch |
 |--------|------------|---------------|
-| Batch Write Time | 27,851ms | 59,884ms |
+| Batch Write Time | 27,851ms | 49,884ms |
 | **Throughput** | **19,704 logs/sec** | 10,023 logs/sec |
 
 ---
