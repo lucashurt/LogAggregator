@@ -149,14 +149,20 @@ Navigate to http://localhost:3000
 
 ### 3. Generate Test Data
 
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install requests
+```
+
 **Option A: Batch load historical data**
 ```bash
-pip install requests
 python generate_logs.py  # Generates 100k logs
 ```
 
 **Option B: Stream real-time logs**
 ```bash
+
 python stream_logs.py              # Default: 100 logs/sec (safe)
 python stream_logs.py --rate 200   # Higher rate (if your system can handle it)
 ```
