@@ -60,9 +60,9 @@ _Full-stack application with WebSocket streaming, React dashboard, Redis caching
 
 | Environment | Recommended Rate | Notes |
 |-------------|------------------|-------|
-| **Development** | 100-500 logs/sec | Safe for any laptop |
-| **Production (Conservative)** | 1,500-2,500 logs/sec | Allows headroom for spikes |
-| **Production (Aggressive)** | 3,000+ logs/sec | Requires 32GB+ RAM, NVMe SSD |
+| **Development** | 500-750 logs/sec | Safe for any laptop |
+| **Production (Conservative)** | 1,500-4,000 logs/sec | Allows headroom for spikes |
+| **Production (Aggressive)** | 5,000+ logs/sec | Requires 32GB+ RAM, NVMe SSD |
 
 ### Test vs Real-World
 
