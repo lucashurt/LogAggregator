@@ -27,10 +27,10 @@ public class KafkaConfig {
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
 
-    @Value("${spring.kafka.consumer.max-poll-records:2000}")
+    @Value("${spring.kafka.consumer.max-poll-records:2500}")
     private int maxPollRecords;
 
-    @Value("${spring.kafka.listener.concurrency:3}")
+    @Value("${spring.kafka.listener.concurrency:4}")
     private int concurrency;
 
     // Note: We inject the global ObjectMapper from JacksonConfig
