@@ -74,14 +74,14 @@ _Full-stack application with WebSocket streaming, React dashboard, Redis caching
 
 | Environment | Expected Rate | Notes |
 |-------------|---------------|-------|
-| **MacBook Air M3 (16GB)** | 6,000 logs/sec | ✅ Verified in tests |
-| **Production Server (32GB, NVMe)** | 12,000-15,000 logs/sec | 2-3x laptop performance |
-| **AWS m6i.4xlarge (16 vCPU, 64GB)** | 15,000-25,000 logs/sec | Dedicated resources |
-| **Kubernetes Cluster** | 50,000+ logs/sec | Horizontal scaling |
+| **MacBook Air M1 (8GB)** | 6,000 logs/sec | ✅ Verified in tests |
+| **Production Server (32GB, NVMe)** | 15,000-20,000 logs/sec | 4x RAM, dedicated resources |
+| **AWS m6i.4xlarge (16 vCPU, 64GB)** | 20,000-30,000 logs/sec | 8x RAM, server-grade I/O |
+| **Kubernetes Cluster** | 60,000+ logs/sec | Horizontal scaling |
 
 ### Architecture Scales Linearly
 
-The system achieved **6,000 logs/sec on a laptop** with 100% data integrity. Production hardware with dedicated CPUs, more RAM, and NVMe storage will scale proportionally. The bottleneck is hardware, not architecture.
+The system achieved **6,000 logs/sec on an 8GB laptop** with 100% data integrity. Production hardware with 4-8x more RAM and dedicated CPUs will scale proportionally. The bottleneck is hardware, not architecture.
 
 ---
 
@@ -139,7 +139,7 @@ The system achieved **6,000 logs/sec on a laptop** with 100% data integrity. Pro
 ### Prerequisites
 - Docker & Docker Compose
 - Python 3.8+ (for log generation scripts)
-- 8GB+ RAM recommended (16GB+ for higher throughput)
+- 8GB RAM (tested and verified at 6,000 logs/sec)
 
 ### 1. Start the Application
 ```bash
