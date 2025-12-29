@@ -22,7 +22,7 @@ _Full-stack application with WebSocket streaming, React dashboard, Redis caching
 
 ## ⚡ Performance Overview
 
-> **Tested on:** MacBook Air M3 (16GB RAM) using Testcontainers. See [PERFORMANCE.md](./PERFORMANCE.md) for detailed benchmarks and tuning.
+> **Tested on:** MacBook Air M1 (8GB RAM) using Testcontainers. See [PERFORMANCE.md](./PERFORMANCE.md) for detailed benchmarks and tuning.
 
 ### Benchmark Results
 
