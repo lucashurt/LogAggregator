@@ -1,9 +1,3 @@
-
-
-
-Readme · MD
-Copy
-
 # Enterprise Log Aggregation System
 
 A **distributed log aggregation system** built to demonstrate enterprise-scale architecture patterns.
