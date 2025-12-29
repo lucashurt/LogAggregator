@@ -1,6 +1,7 @@
 package com.example.logaggregator.logs;
 
 import com.example.logaggregator.BaseIntegrationTest;
+import com.example.logaggregator.elasticsearch.LogDocument;
 import com.example.logaggregator.elasticsearch.LogElasticsearchRepository;
 import com.example.logaggregator.logs.DTOs.LogEntryRequest;
 import com.example.logaggregator.logs.models.LogStatus;
@@ -11,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -24,7 +26,17 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-
+/**
+ * COMPLETE End-to-End Load Test
+ *
+ * Measures the FULL pipeline including:
+ * - HTTP API acceptance
+ * - Kafka producer/consumer
+ * - PostgreSQL persistence
+ * - Elasticsearch indexing
+ *
+ * This gives realistic production throughput numbers.
+ */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Tag("load-test")
 @ActiveProfiles("test")
@@ -42,15 +54,16 @@ public class ConstantLoadTest extends BaseIntegrationTest {
     @Autowired
     private LogElasticsearchRepository elasticsearchRepository;
 
+    @Autowired
+    private ElasticsearchOperations elasticsearchOperations;
+
     // ==================== CONFIGURATION ====================
-    // Adjust these to match your expected production load
+    private static final int TARGET_LOGS_PER_SECOND = 500;
+    private static final int TEST_DURATION_SECONDS = 30;
+    private static final int BATCH_SIZE = 500;
+    private static final int MEASUREMENT_INTERVAL_SECONDS = 5;
+    private static final int HTTP_THREAD_POOL_SIZE = 8;
 
-    private static final int TARGET_LOGS_PER_SECOND = 500;    // Target ingestion rate
-    private static final int TEST_DURATION_SECONDS = 30;       // How long to run
-    private static final int BATCH_SIZE = 100;                 // Logs per HTTP request
-    private static final int MEASUREMENT_INTERVAL_SECONDS = 5; // How often to report metrics
-
-    // Data pools for realistic log generation
     private final Random random = new Random();
     private final String[] services = {"auth-service", "payment-service", "notification-service",
             "user-service", "inventory-service", "shipping-service"};
@@ -72,125 +85,169 @@ public class ConstantLoadTest extends BaseIntegrationTest {
     void cleanup() {
         logRepository.deleteAll();
         elasticsearchRepository.deleteAll();
+
+        // Refresh ES index to ensure clean state
+        try {
+            elasticsearchOperations.indexOps(LogDocument.class).refresh();
+        } catch (Exception e) {
+            // Ignore
+        }
+    }
+
+    /**
+     * Helper to get Elasticsearch count with refresh
+     */
+    private long getElasticsearchCount() {
+        try {
+            elasticsearchOperations.indexOps(LogDocument.class).refresh();
+            return elasticsearchRepository.count();
+        } catch (Exception e) {
+            return -1;
+        }
     }
 
     /**
      * TEST 1: Measure sustained throughput at a target rate.
-     *
-     * This simulates your stream_logs.py behavior in a controlled test environment.
-     * Sends logs at a steady rate and measures how well the system keeps up.
+     * Measures BOTH PostgreSQL and Elasticsearch.
      */
     @Test
     void measureSustainedThroughput() throws InterruptedException {
         printHeader();
 
-        // Tracking metrics
         AtomicLong totalLogsSent = new AtomicLong(0);
+        AtomicLong totalLogsAccepted = new AtomicLong(0);
         List<Long> latencies = new CopyOnWriteArrayList<>();
         List<IntervalMetrics> intervalMetrics = new CopyOnWriteArrayList<>();
 
-        // Calculate timing
         int batchesPerSecond = (int) Math.ceil((double) TARGET_LOGS_PER_SECOND / BATCH_SIZE);
+        batchesPerSecond = Math.max(1, batchesPerSecond);
         long delayBetweenBatches = 1000 / batchesPerSecond;
 
         System.out.printf("📊 Configuration:%n");
-        System.out.printf("   Target Rate    : %,d logs/sec%n", TARGET_LOGS_PER_SECOND);
-        System.out.printf("   Batch Size     : %d logs%n", BATCH_SIZE);
-        System.out.printf("   Batches/Second : %d%n", batchesPerSecond);
-        System.out.printf("   Test Duration  : %d seconds%n", TEST_DURATION_SECONDS);
-        System.out.printf("   Expected Total : %,d logs%n", TARGET_LOGS_PER_SECOND * TEST_DURATION_SECONDS);
+        System.out.printf("   Target Rate     : %,d logs/sec%n", TARGET_LOGS_PER_SECOND);
+        System.out.printf("   Batch Size      : %d logs%n", BATCH_SIZE);
+        System.out.printf("   Batches/Second  : %d%n", batchesPerSecond);
+        System.out.printf("   HTTP Threads    : %d%n", HTTP_THREAD_POOL_SIZE);
+        System.out.printf("   Test Duration   : %d seconds%n", TEST_DURATION_SECONDS);
+        System.out.printf("   Expected Total  : %,d logs%n", TARGET_LOGS_PER_SECOND * TEST_DURATION_SECONDS);
+        System.out.printf("   Tracking        : PostgreSQL + Elasticsearch%n");
         System.out.println("-".repeat(80));
 
-        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4);
+        ExecutorService httpExecutor = Executors.newFixedThreadPool(HTTP_THREAD_POOL_SIZE);
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 
-        // Track interval metrics
         AtomicLong intervalStart = new AtomicLong(System.currentTimeMillis());
         AtomicLong intervalLogsSent = new AtomicLong(0);
 
         long testStartTime = System.currentTimeMillis();
 
-        // Schedule batch sends at regular intervals (simulates continuous stream)
         ScheduledFuture<?> sendTask = scheduler.scheduleAtFixedRate(() -> {
-            try {
-                List<LogEntryRequest> batch = generateBatch(BATCH_SIZE);
+            httpExecutor.submit(() -> {
+                try {
+                    List<LogEntryRequest> batch = generateBatch(BATCH_SIZE);
 
-                long requestStart = System.nanoTime();
-                ResponseEntity<String> response = sendBatch(batch);
-                long requestDuration = System.nanoTime() - requestStart;
+                    long requestStart = System.nanoTime();
+                    ResponseEntity<String> response = sendBatch(batch);
+                    long requestDuration = System.nanoTime() - requestStart;
 
-                if (response.getStatusCode().is2xxSuccessful()) {
                     totalLogsSent.addAndGet(BATCH_SIZE);
-                    intervalLogsSent.addAndGet(BATCH_SIZE);
-                    latencies.add(requestDuration / 1_000_000); // Convert to ms
+
+                    if (response.getStatusCode().is2xxSuccessful()) {
+                        totalLogsAccepted.addAndGet(BATCH_SIZE);
+                        intervalLogsSent.addAndGet(BATCH_SIZE);
+                        latencies.add(requestDuration / 1_000_000);
+                    }
+                } catch (Exception e) {
+                    System.err.println("❌ Batch send failed: " + e.getMessage());
                 }
-            } catch (Exception e) {
-                System.err.println("❌ Batch send failed: " + e.getMessage());
-            }
+            });
         }, 0, delayBetweenBatches, TimeUnit.MILLISECONDS);
 
-        // Schedule interval reporting (shows progress every N seconds)
+        // Progress reporting - now includes BOTH stores
         ScheduledFuture<?> reportTask = scheduler.scheduleAtFixedRate(() -> {
             long now = System.currentTimeMillis();
             long intervalDuration = now - intervalStart.get();
             long logsInInterval = intervalLogsSent.getAndSet(0);
             intervalStart.set(now);
 
-            double intervalThroughput = (logsInInterval / (intervalDuration / 1000.0));
-            long postgresCount = logRepository.count();
-            long lag = totalLogsSent.get() - postgresCount;
+            double intervalThroughput = intervalDuration > 0 ?
+                    (logsInInterval / (intervalDuration / 1000.0)) : 0;
+
+            long pgCount = logRepository.count();
+            long esCount = getElasticsearchCount();
+            long pgLag = totalLogsAccepted.get() - pgCount;
+            long esLag = totalLogsAccepted.get() - esCount;
 
             IntervalMetrics metrics = new IntervalMetrics(
                     (now - testStartTime) / 1000,
                     logsInInterval,
                     intervalThroughput,
-                    postgresCount,
-                    lag
+                    pgCount,
+                    esCount,
+                    pgLag,
+                    esLag
             );
             intervalMetrics.add(metrics);
 
-            System.out.printf("⏱️  [%3ds] Sent: %,6d | Throughput: %,.0f/s | DB: %,d | Lag: %,d%n",
-                    metrics.elapsedSeconds, metrics.logsSent, metrics.throughput,
-                    metrics.dbCount, metrics.lag);
+            System.out.printf("⏱️  [%3ds] API: %,.0f/s | PG: %,d (lag:%,d) | ES: %,d (lag:%,d)%n",
+                    metrics.elapsedSeconds, metrics.throughput,
+                    metrics.pgCount, metrics.pgLag,
+                    metrics.esCount, metrics.esLag);
 
         }, MEASUREMENT_INTERVAL_SECONDS, MEASUREMENT_INTERVAL_SECONDS, TimeUnit.SECONDS);
 
-        // Run for specified duration
         Thread.sleep(TEST_DURATION_SECONDS * 1000L);
 
-        // Shutdown
         sendTask.cancel(false);
         reportTask.cancel(false);
         scheduler.shutdown();
+        httpExecutor.shutdown();
         scheduler.awaitTermination(5, TimeUnit.SECONDS);
+        httpExecutor.awaitTermination(10, TimeUnit.SECONDS);
 
-        // Wait for processing to complete (consumer lag to clear)
-        System.out.println("\n⏳ Waiting for consumer lag to clear...");
+        // Wait for BOTH stores to catch up
+        System.out.println("\n⏳ Waiting for both PostgreSQL and Elasticsearch to process...");
         long waitStart = System.currentTimeMillis();
-        long maxWaitMs = 30000;
+        long maxWaitMs = Math.max(30000, totalLogsAccepted.get() / 500 * 100);
 
         while (System.currentTimeMillis() - waitStart < maxWaitMs) {
-            long dbCount = logRepository.count();
-            if (dbCount >= totalLogsSent.get() * 0.99) {
+            long pgCount = logRepository.count();
+            long esCount = getElasticsearchCount();
+
+            double pgProgress = totalLogsAccepted.get() > 0 ?
+                    (pgCount * 100.0 / totalLogsAccepted.get()) : 0;
+            double esProgress = totalLogsAccepted.get() > 0 ?
+                    (esCount * 100.0 / totalLogsAccepted.get()) : 0;
+
+            // Both need to be at 99%+
+            if (pgCount >= totalLogsAccepted.get() * 0.99 &&
+                    esCount >= totalLogsAccepted.get() * 0.99) {
+                System.out.printf("   ✅ Pipeline drained: PG=%,d (%.1f%%) | ES=%,d (%.1f%%)%n",
+                        pgCount, pgProgress, esCount, esProgress);
                 break;
+            }
+
+            if ((System.currentTimeMillis() - waitStart) % 5000 < 500) {
+                System.out.printf("   ⏳ Processing: PG=%,d (%.1f%%) | ES=%,d (%.1f%%)%n",
+                        pgCount, pgProgress, esCount, esProgress);
             }
             Thread.sleep(500);
         }
 
-        // Final metrics
         long testEndTime = System.currentTimeMillis();
         long totalDuration = testEndTime - testStartTime;
-        long finalDbCount = logRepository.count();
+        long finalPgCount = logRepository.count();
+        long finalEsCount = getElasticsearchCount();
 
-        printResults(totalLogsSent.get(), finalDbCount, totalDuration, latencies, intervalMetrics);
+        printResults(totalLogsAccepted.get(), finalPgCount, finalEsCount, totalDuration, latencies, intervalMetrics);
 
-        assertThat(finalDbCount).isGreaterThan(0);
+        assertThat(finalPgCount).isGreaterThan(0);
+        assertThat(finalEsCount).isGreaterThan(0);
     }
 
     /**
      * TEST 2: Find the maximum sustainable throughput.
-     *
-     * Starts at a low rate and escalates until the system can't keep up.
-     * This tells you the actual capacity of your system.
+     * Measures BOTH PostgreSQL and Elasticsearch.
      */
     @Test
     void findMaxSustainableThroughput() throws InterruptedException {
@@ -202,17 +259,19 @@ public class ConstantLoadTest extends BaseIntegrationTest {
         System.out.println("██║ ╚═╝ ██║██║  ██║██╔╝ ██╗       ██║   ██║  ██║██║  ██║╚██████╔╝╚██████╔╝╚██████╔╝██║  ██║██║     ╚██████╔╝   ██║   ");
         System.out.println("╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝       ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝      ╚═════╝    ╚═╝   ");
         System.out.println("=".repeat(100));
-        System.out.println("Finding the maximum sustainable throughput your system can handle...\n");
+        System.out.println("Finding maximum sustainable throughput (PostgreSQL + Elasticsearch)...\n");
 
-        int[] testRates = {100, 250, 500, 1000, 2000, 5000, 10000};
+        int[] testRates = {100, 250, 500, 1000, 2000, 5000, 10000, 15000, 20000};
         int testDurationPerRate = 10;
 
         List<RateTestResult> results = new ArrayList<>();
 
         for (int rate : testRates) {
-            // Clean up between tests
             logRepository.deleteAll();
             elasticsearchRepository.deleteAll();
+            try {
+                elasticsearchOperations.indexOps(LogDocument.class).refresh();
+            } catch (Exception e) { /* ignore */ }
             Thread.sleep(2000);
 
             System.out.printf("🧪 Testing %,d logs/sec for %d seconds...%n", rate, testDurationPerRate);
@@ -220,8 +279,9 @@ public class ConstantLoadTest extends BaseIntegrationTest {
             RateTestResult result = testRate(rate, testDurationPerRate);
             results.add(result);
 
-            System.out.printf("   → Actual: %,.0f/s | Lag: %,d | Success: %s%n",
-                    result.actualThroughput, result.finalLag,
+            System.out.printf("   → PG: %,.0f/s (lag:%,d) | ES: %,.0f/s (lag:%,d) | %s%n",
+                    result.pgThroughput, result.pgLag,
+                    result.esThroughput, result.esLag,
                     result.sustainable ? "✅ SUSTAINABLE" : "❌ FALLING BEHIND");
 
             if (!result.sustainable) {
@@ -231,40 +291,44 @@ public class ConstantLoadTest extends BaseIntegrationTest {
         }
 
         // Print summary
-        System.out.println("\n" + "=".repeat(100));
-        System.out.println("RESULTS SUMMARY");
-        System.out.println("=".repeat(100));
-        System.out.printf("%-15s | %-15s | %-10s | %-15s | %-10s%n",
-                "Target Rate", "Actual Rate", "Lag", "Efficiency", "Status");
-        System.out.println("-".repeat(75));
+        System.out.println("\n" + "=".repeat(110));
+        System.out.println("RESULTS SUMMARY (End-to-End: API → Kafka → PostgreSQL + Elasticsearch)");
+        System.out.println("=".repeat(110));
+        System.out.printf("%-12s | %-12s | %-8s | %-12s | %-8s | %-10s | %-10s%n",
+                "Target", "PG Rate", "PG Lag", "ES Rate", "ES Lag", "Efficiency", "Status");
+        System.out.println("-".repeat(110));
 
         int maxSustainable = 0;
         for (RateTestResult r : results) {
-            double efficiency = (r.actualThroughput / r.targetRate) * 100;
-            System.out.printf("%-,15d | %-,15.0f | %-,10d | %13.1f%% | %-10s%n",
-                    r.targetRate, r.actualThroughput, r.finalLag, efficiency,
+            // Use the SLOWER of the two as actual throughput (bottleneck)
+            double actualRate = Math.min(r.pgThroughput, r.esThroughput);
+            double efficiency = (actualRate / r.targetRate) * 100;
+
+            System.out.printf("%-,12d | %-,12.0f | %-,8d | %-,12.0f | %-,8d | %9.1f%% | %-10s%n",
+                    r.targetRate,
+                    r.pgThroughput, r.pgLag,
+                    r.esThroughput, r.esLag,
+                    efficiency,
                     r.sustainable ? "✅ OK" : "❌ FAIL");
+
             if (r.sustainable) {
                 maxSustainable = r.targetRate;
             }
         }
 
-        System.out.println("=".repeat(100));
-        System.out.printf("🏆 MAXIMUM SUSTAINABLE THROUGHPUT: %,d logs/second%n", maxSustainable);
+        System.out.println("=".repeat(110));
+        System.out.printf("🏆 MAXIMUM SUSTAINABLE THROUGHPUT: %,d logs/second (both stores)%n", maxSustainable);
         System.out.printf("📊 Daily Capacity: ~%,d logs/day%n", maxSustainable * 86400L);
-        System.out.println("=".repeat(100));
+        System.out.println("=".repeat(110));
     }
 
     /**
      * TEST 3: Stress test beyond capacity.
-     *
-     * Pushes the system WAY beyond its limits to see how it degrades gracefully.
-     * Tests resilience, not performance.
      */
     @Test
     void stressTestBeyondCapacity() throws InterruptedException {
         System.out.println("\n");
-        System.out.println("💥 STRESS TEST - Pushing Beyond Capacity");
+        System.out.println("💥 STRESS TEST - Pushing Beyond Capacity (Full Pipeline)");
         System.out.println("=".repeat(80));
 
         int extremeRate = 20000;
@@ -272,6 +336,7 @@ public class ConstantLoadTest extends BaseIntegrationTest {
 
         System.out.printf("🔥 Target: %,d logs/sec for %d seconds%n", extremeRate, stressDuration);
         System.out.printf("   Expected total: %,d logs%n", extremeRate * stressDuration);
+        System.out.printf("   Tracking: PostgreSQL + Elasticsearch%n");
         System.out.println("-".repeat(80));
 
         logRepository.deleteAll();
@@ -282,52 +347,57 @@ public class ConstantLoadTest extends BaseIntegrationTest {
         AtomicLong totalRejected = new AtomicLong(0);
         List<Long> responseTimes = new CopyOnWriteArrayList<>();
 
-        int batchSize = 200;
+        int batchSize = 500;
         int batchesPerSecond = extremeRate / batchSize;
-        long delayMs = 1000 / batchesPerSecond;
+        long delayMs = Math.max(1, 1000 / batchesPerSecond);
 
-        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(8);
+        ExecutorService httpExecutor = Executors.newFixedThreadPool(16);
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
         long startTime = System.currentTimeMillis();
 
         ScheduledFuture<?> task = scheduler.scheduleAtFixedRate(() -> {
-            try {
-                List<LogEntryRequest> batch = generateBatch(batchSize);
-                long reqStart = System.nanoTime();
-                ResponseEntity<String> response = sendBatch(batch);
-                long reqTime = (System.nanoTime() - reqStart) / 1_000_000;
-                responseTimes.add(reqTime);
+            httpExecutor.submit(() -> {
+                try {
+                    List<LogEntryRequest> batch = generateBatch(batchSize);
+                    long reqStart = System.nanoTime();
+                    ResponseEntity<String> response = sendBatch(batch);
+                    long reqTime = (System.nanoTime() - reqStart) / 1_000_000;
+                    responseTimes.add(reqTime);
 
-                totalSent.addAndGet(batchSize);
-                if (response.getStatusCode().is2xxSuccessful()) {
-                    totalAccepted.addAndGet(batchSize);
-                } else {
+                    totalSent.addAndGet(batchSize);
+                    if (response.getStatusCode().is2xxSuccessful()) {
+                        totalAccepted.addAndGet(batchSize);
+                    } else {
+                        totalRejected.addAndGet(batchSize);
+                    }
+                } catch (Exception e) {
                     totalRejected.addAndGet(batchSize);
                 }
-            } catch (Exception e) {
-                totalRejected.addAndGet(batchSize);
-            }
+            });
         }, 0, delayMs, TimeUnit.MILLISECONDS);
 
-        // Progress reporting
         for (int i = 0; i < stressDuration; i++) {
             Thread.sleep(1000);
             long elapsed = (System.currentTimeMillis() - startTime) / 1000;
-            long dbCount = logRepository.count();
-            System.out.printf("   [%2ds] Sent: %,d | In DB: %,d | Rejected: %,d%n",
-                    elapsed, totalSent.get(), dbCount, totalRejected.get());
+            long pgCount = logRepository.count();
+            long esCount = getElasticsearchCount();
+            System.out.printf("   [%2ds] Sent: %,d | PG: %,d | ES: %,d | Rejected: %,d%n",
+                    elapsed, totalSent.get(), pgCount, esCount, totalRejected.get());
         }
 
         task.cancel(false);
         scheduler.shutdown();
+        httpExecutor.shutdown();
         scheduler.awaitTermination(5, TimeUnit.SECONDS);
+        httpExecutor.awaitTermination(10, TimeUnit.SECONDS);
 
-        // Wait for processing
-        Thread.sleep(5000);
+        System.out.println("\n⏳ Waiting for pipeline to drain...");
+        Thread.sleep(10000);
 
-        long finalDbCount = logRepository.count();
+        long finalPgCount = logRepository.count();
+        long finalEsCount = getElasticsearchCount();
         long duration = System.currentTimeMillis() - startTime;
 
-        // Calculate percentiles
         Collections.sort(responseTimes);
         double p50 = responseTimes.isEmpty() ? 0 : responseTimes.get(responseTimes.size() / 2);
         double p95 = responseTimes.isEmpty() ? 0 : responseTimes.get((int)(responseTimes.size() * 0.95));
@@ -336,13 +406,19 @@ public class ConstantLoadTest extends BaseIntegrationTest {
         System.out.println("\n" + "=".repeat(80));
         System.out.println("STRESS TEST RESULTS");
         System.out.println("=".repeat(80));
-        System.out.printf("   Logs Sent (API)     : %,d%n", totalSent.get());
-        System.out.printf("   Logs Accepted       : %,d%n", totalAccepted.get());
-        System.out.printf("   Logs Rejected       : %,d%n", totalRejected.get());
-        System.out.printf("   Logs in DB          : %,d%n", finalDbCount);
-        System.out.printf("   Processing Rate     : %,.0f logs/sec%n", finalDbCount / (duration / 1000.0));
-        System.out.printf("   Data Loss           : %.2f%%%n",
-                totalAccepted.get() > 0 ? 100.0 * (totalAccepted.get() - finalDbCount) / totalAccepted.get() : 0);
+        System.out.printf("   Logs Sent (API)      : %,d%n", totalSent.get());
+        System.out.printf("   Logs Accepted        : %,d%n", totalAccepted.get());
+        System.out.printf("   Logs Rejected        : %,d%n", totalRejected.get());
+        System.out.println();
+        System.out.printf("   PostgreSQL Count     : %,d%n", finalPgCount);
+        System.out.printf("   PostgreSQL Rate      : %,.0f logs/sec%n", finalPgCount / (duration / 1000.0));
+        System.out.printf("   PostgreSQL Loss      : %.2f%%%n",
+                totalAccepted.get() > 0 ? 100.0 * (totalAccepted.get() - finalPgCount) / totalAccepted.get() : 0);
+        System.out.println();
+        System.out.printf("   Elasticsearch Count  : %,d%n", finalEsCount);
+        System.out.printf("   Elasticsearch Rate   : %,.0f logs/sec%n", finalEsCount / (duration / 1000.0));
+        System.out.printf("   Elasticsearch Loss   : %.2f%%%n",
+                totalAccepted.get() > 0 ? 100.0 * (totalAccepted.get() - finalEsCount) / totalAccepted.get() : 0);
         System.out.println("\n   Response Time Percentiles:");
         System.out.printf("   P50: %.0fms | P95: %.0fms | P99: %.0fms%n", p50, p95, p99);
         System.out.println("=".repeat(80));
@@ -350,43 +426,73 @@ public class ConstantLoadTest extends BaseIntegrationTest {
 
     // ==================== HELPER METHODS ====================
 
+    /**
+     * Test a specific rate and measure BOTH stores
+     */
     private RateTestResult testRate(int targetRate, int durationSeconds) throws InterruptedException {
         AtomicLong totalSent = new AtomicLong(0);
-        int batchSize = Math.min(100, targetRate);
-        int batchesPerSecond = (int) Math.ceil((double) targetRate / batchSize);
-        long delayMs = 1000 / Math.max(1, batchesPerSecond);
+        AtomicLong totalAccepted = new AtomicLong(0);
 
-        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4);
+        int batchSize = Math.min(500, Math.max(100, targetRate / 10));
+        int batchesPerSecond = (int) Math.ceil((double) targetRate / batchSize);
+        batchesPerSecond = Math.max(1, batchesPerSecond);
+
+        int threadCount = Math.min(16, Math.max(4, batchesPerSecond / 5 + 1));
+        ExecutorService httpExecutor = Executors.newFixedThreadPool(threadCount);
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
+
         long startTime = System.currentTimeMillis();
+        long delayMs = Math.max(1, 1000 / batchesPerSecond);
 
         ScheduledFuture<?> task = scheduler.scheduleAtFixedRate(() -> {
-            try {
-                List<LogEntryRequest> batch = generateBatch(batchSize);
-                ResponseEntity<String> response = sendBatch(batch);
-                if (response.getStatusCode().is2xxSuccessful()) {
+            httpExecutor.submit(() -> {
+                try {
+                    List<LogEntryRequest> batch = generateBatch(batchSize);
+                    ResponseEntity<String> response = sendBatch(batch);
                     totalSent.addAndGet(batchSize);
-                }
-            } catch (Exception ignored) {}
+                    if (response.getStatusCode().is2xxSuccessful()) {
+                        totalAccepted.addAndGet(batchSize);
+                    }
+                } catch (Exception ignored) {}
+            });
         }, 0, delayMs, TimeUnit.MILLISECONDS);
 
         Thread.sleep(durationSeconds * 1000L);
         task.cancel(false);
         scheduler.shutdown();
+        httpExecutor.shutdown();
         scheduler.awaitTermination(2, TimeUnit.SECONDS);
+        httpExecutor.awaitTermination(5, TimeUnit.SECONDS);
 
-        // Wait for processing
-        Thread.sleep(3000);
+        // Wait for BOTH stores
+        long expectedLogs = totalAccepted.get();
+        long maxWaitMs = Math.max(10000, expectedLogs / 1000 * 200);
+        long waitStart = System.currentTimeMillis();
 
-        long endTime = System.currentTimeMillis();
-        long duration = endTime - startTime;
-        long dbCount = logRepository.count();
-        long lag = totalSent.get() - dbCount;
-        double actualThroughput = dbCount / (duration / 1000.0);
+        while (System.currentTimeMillis() - waitStart < maxWaitMs) {
+            long pgCount = logRepository.count();
+            long esCount = getElasticsearchCount();
 
-        // Sustainable if lag is less than 10% of total sent
-        boolean sustainable = lag < (totalSent.get() * 0.1);
+            // Both need to be at 95%+
+            if (pgCount >= expectedLogs * 0.95 && esCount >= expectedLogs * 0.95) {
+                break;
+            }
+            Thread.sleep(200);
+        }
 
-        return new RateTestResult(targetRate, actualThroughput, lag, sustainable);
+        long pgCount = logRepository.count();
+        long esCount = getElasticsearchCount();
+        long pgLag = totalAccepted.get() - pgCount;
+        long esLag = totalAccepted.get() - esCount;
+
+        double pgThroughput = pgCount / (double) durationSeconds;
+        double esThroughput = esCount / (double) durationSeconds;
+
+        // Sustainable if BOTH stores have lag < 10%
+        boolean sustainable = pgLag < (totalAccepted.get() * 0.1) &&
+                esLag < (totalAccepted.get() * 0.1);
+
+        return new RateTestResult(targetRate, pgThroughput, pgLag, esThroughput, esLag, sustainable);
     }
 
     private List<LogEntryRequest> generateBatch(int size) {
@@ -426,24 +532,33 @@ public class ConstantLoadTest extends BaseIntegrationTest {
         System.out.println("╚════██║██║   ██║╚════██║   ██║   ██╔══██║██║██║╚██╗██║██╔══╝  ██║  ██║");
         System.out.println("███████║╚██████╔╝███████║   ██║   ██║  ██║██║██║ ╚████║███████╗██████╔╝");
         System.out.println("╚══════╝ ╚═════╝ ╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚══════╝╚═════╝ ");
-        System.out.println("              THROUGHPUT TEST - Simulating Real-World Load             ");
+        System.out.println("         END-TO-END THROUGHPUT TEST (PostgreSQL + Elasticsearch)       ");
         System.out.println("=".repeat(80));
     }
 
-    private void printResults(long totalSent, long dbCount, long duration,
+    private void printResults(long totalSent, long pgCount, long esCount, long duration,
                               List<Long> latencies, List<IntervalMetrics> intervals) {
         System.out.println("\n" + "=".repeat(80));
         System.out.println("FINAL RESULTS");
         System.out.println("=".repeat(80));
 
-        double actualThroughput = dbCount / (duration / 1000.0);
-        double efficiency = totalSent > 0 ? ((double) dbCount / totalSent) * 100 : 0;
+        double pgThroughput = pgCount / (duration / 1000.0);
+        double esThroughput = esCount / (duration / 1000.0);
+        double pgEfficiency = totalSent > 0 ? ((double) pgCount / totalSent) * 100 : 0;
+        double esEfficiency = totalSent > 0 ? ((double) esCount / totalSent) * 100 : 0;
 
-        System.out.printf("%-30s : %,d%n", "Logs Sent (API Accepted)", totalSent);
-        System.out.printf("%-30s : %,d%n", "Logs Persisted (PostgreSQL)", dbCount);
+        System.out.printf("%-30s : %,d%n", "Logs Accepted by API", totalSent);
         System.out.printf("%-30s : %,d ms%n", "Total Test Duration", duration);
-        System.out.printf("%-30s : %,.2f logs/sec%n", "Actual Throughput", actualThroughput);
-        System.out.printf("%-30s : %.1f%%%n", "Processing Efficiency", efficiency);
+        System.out.println();
+        System.out.println("📦 PostgreSQL:");
+        System.out.printf("   %-26s : %,d%n", "Final Count", pgCount);
+        System.out.printf("   %-26s : %,.2f logs/sec%n", "Throughput", pgThroughput);
+        System.out.printf("   %-26s : %.1f%%%n", "Efficiency", pgEfficiency);
+        System.out.println();
+        System.out.println("🔍 Elasticsearch:");
+        System.out.printf("   %-26s : %,d%n", "Final Count", esCount);
+        System.out.printf("   %-26s : %,.2f logs/sec%n", "Throughput", esThroughput);
+        System.out.printf("   %-26s : %.1f%%%n", "Efficiency", esEfficiency);
 
         if (!latencies.isEmpty()) {
             Collections.sort(latencies);
@@ -460,18 +575,8 @@ public class ConstantLoadTest extends BaseIntegrationTest {
                     .mapToDouble(i -> i.throughput)
                     .average()
                     .orElse(0);
-            double minThroughput = intervals.stream()
-                    .mapToDouble(i -> i.throughput)
-                    .min()
-                    .orElse(0);
-            double maxThroughput = intervals.stream()
-                    .mapToDouble(i -> i.throughput)
-                    .max()
-                    .orElse(0);
 
-            System.out.printf("   Average : %,.0f logs/sec%n", avgThroughput);
-            System.out.printf("   Min     : %,.0f logs/sec%n", minThroughput);
-            System.out.printf("   Max     : %,.0f logs/sec%n", maxThroughput);
+            System.out.printf("   Average API Rate : %,.0f logs/sec%n", avgThroughput);
 
             // Check for degradation
             if (intervals.size() >= 4) {
@@ -481,40 +586,58 @@ public class ConstantLoadTest extends BaseIntegrationTest {
                         .mapToDouble(i -> i.throughput).average().orElse(0);
 
                 if (secondHalf < firstHalf * 0.9) {
-                    System.out.println("   ⚠️  WARNING: Throughput degraded over time (possible resource exhaustion)");
+                    System.out.println("   ⚠️  WARNING: Throughput degraded over time");
                 } else {
                     System.out.println("   ✅ Throughput remained stable throughout test");
                 }
             }
 
-            // Consumer lag analysis
-            long maxLag = intervals.stream().mapToLong(i -> i.lag).max().orElse(0);
-            long finalLag = intervals.get(intervals.size() - 1).lag;
+            // Lag analysis for BOTH stores
+            long maxPgLag = intervals.stream().mapToLong(i -> i.pgLag).max().orElse(0);
+            long maxEsLag = intervals.stream().mapToLong(i -> i.esLag).max().orElse(0);
+            long finalPgLag = intervals.get(intervals.size() - 1).pgLag;
+            long finalEsLag = intervals.get(intervals.size() - 1).esLag;
 
             System.out.println("\n📉 Consumer Lag Analysis:");
-            System.out.printf("   Max Lag During Test : %,d logs%n", maxLag);
-            System.out.printf("   Final Lag           : %,d logs%n", finalLag);
+            System.out.printf("   PostgreSQL    - Max: %,d | Final: %,d%n", maxPgLag, finalPgLag);
+            System.out.printf("   Elasticsearch - Max: %,d | Final: %,d%n", maxEsLag, finalEsLag);
 
-            if (maxLag > totalSent * 0.2) {
-                System.out.println("   ⚠️  WARNING: High consumer lag detected. System falling behind.");
-            } else if (maxLag > totalSent * 0.1) {
+            if (maxPgLag > totalSent * 0.2 || maxEsLag > totalSent * 0.2) {
+                System.out.println("   ⚠️  WARNING: High lag detected. System falling behind.");
+            } else if (maxPgLag > totalSent * 0.1 || maxEsLag > totalSent * 0.1) {
                 System.out.println("   ⚡ NOTICE: Moderate lag. System is catching up.");
             } else {
-                System.out.println("   ✅ Consumer keeping pace with ingestion.");
+                System.out.println("   ✅ Both stores keeping pace with ingestion.");
             }
         }
 
+        // Use SLOWER store for recommendation
+        double effectiveThroughput = Math.min(pgThroughput, esThroughput);
+
         System.out.println("\n" + "=".repeat(80));
-        System.out.printf("🎯 RECOMMENDATION: Based on these results, your system can sustainably handle%n");
-        System.out.printf("   approximately %,.0f logs/second in a production environment.%n", actualThroughput * 0.8);
+        System.out.printf("🎯 RECOMMENDATION: Based on end-to-end results, your system can sustainably%n");
+        System.out.printf("   handle approximately %,.0f logs/second with both stores.%n", effectiveThroughput * 0.8);
         System.out.println("=".repeat(80));
     }
 
     // ==================== INNER CLASSES ====================
 
-    private record IntervalMetrics(long elapsedSeconds, long logsSent, double throughput,
-                                   long dbCount, long lag) {}
+    private record IntervalMetrics(
+            long elapsedSeconds,
+            long logsSent,
+            double throughput,
+            long pgCount,
+            long esCount,
+            long pgLag,
+            long esLag
+    ) {}
 
-    private record RateTestResult(int targetRate, double actualThroughput,
-                                  long finalLag, boolean sustainable) {}
+    private record RateTestResult(
+            int targetRate,
+            double pgThroughput,
+            long pgLag,
+            double esThroughput,
+            long esLag,
+            boolean sustainable
+    ) {}
 }

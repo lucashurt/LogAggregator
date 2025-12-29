@@ -27,7 +27,7 @@ public class WebsocketService {
     private static final long BROADCAST_INTERVAL_MS = 250;
 
     /** Maximum logs per broadcast (prevents huge JSON payloads) */
-    private static final int MAX_LOGS_PER_BROADCAST = 250;
+    private static final int MAX_LOGS_PER_BROADCAST = 500;
 
     /** Maximum queue size before dropping oldest logs */
     private static final int MAX_QUEUE_SIZE = 2000;

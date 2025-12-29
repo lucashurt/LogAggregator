@@ -100,8 +100,6 @@ public class LogLoadTest extends BaseIntegrationTest {
         logRepository.deleteAllInBatch();
         elasticsearchRepository.deleteAll();
 
-        // REMOVED: entityManager.flush();  <-- Caused the crash
-        // REMOVED: entityManager.clear();  <-- Not needed if you use deleteAllInBatch
 
         try {
             elasticsearchTemplate.indexOps(LogDocument.class).refresh();
